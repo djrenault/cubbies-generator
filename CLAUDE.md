@@ -7,9 +7,31 @@ client-side in the browser.
 
 ## Status
 
-Nothing is implemented yet. This file is the design spec and build guide.
+Fully implemented and working. Open `index.html` directly — no server, no
+build step, no internet connection (see Tech Stack & Architecture, below,
+for exactly why that works). This file is no longer just a spec to build
+toward; it documents what's actually shipped, kept in sync with the code
+as it changed. That includes four real bugs found through use and fixed in
+place, each documented in the relevant section below rather than left only
+in git history, since the failure mode is exactly what's worth knowing
+before touching that code again:
+
+- End panels and internal dividers stopped flush at the old "clear height"
+  boundary instead of reaching into the rabbet/dado pocket cut for them,
+  leaving a visible gap at every corner and divider — see Joinery Model &
+  Geometry, item 2.
+- `type="module"` scripts and import maps silently fail to load over
+  `file://` in every browser, which broke the entire point of vendoring
+  dependencies locally — see Tech Stack & Architecture.
+- `three-bvh-csg` throws on exactly-coplanar cut faces, reproducible with
+  wider grids in inset backboard mode — see 3D Viewer, `CSG_EPS`.
+- A single click into a dimension field doesn't select its existing text,
+  so typing a replacement corrupted it into something unparseable and the
+  edit silently reverted — see Units, Fractions & Precision.
+
 Treat every formula and structural decision below as the source of truth
-when scaffolding the app; flag anything you need to deviate from.
+for how the app actually behaves; if you change the code, update the
+matching section here in the same commit.
 
 ## Concept
 
@@ -427,7 +449,8 @@ src/
   viewer3d.js   Three.js scene setup, mesh generation from geometry.js output,
                 color modes, controls
   cutlist.js    renders the cut list table from geometry.js output
-  ui.js         input panel wiring, validation messages
+  ui.js         input panel wiring, validation messages, settings
+                export/import/reset, cut-list toggle
 styles/
   main.css
   print.css
@@ -438,16 +461,20 @@ function from state to a plain-data piece list that both `viewer3d.js` and
 `cutlist.js` consume. This is what makes the cut list and the 3D model
 guaranteed to match.
 
-## Open Assumptions to Confirm With the User
+## Settled Design Decisions
 
-These were reasonable defaults chosen to keep the spec concrete, but are
-worth a quick confirmation before or during implementation if anything
-looks off:
+These were reasonable defaults flagged for confirmation before or during
+implementation, back when this file was still just a spec. They've since
+held up through real use — several rounds of testing and bug-fixing never
+touched any of them — so treat them as settled, not provisional. Revisit
+only if the user explicitly asks for a change here, not as a side effect
+of unrelated work:
 
 - Uniform cell size across the whole grid (no per-row/per-column sizing).
 - Internal dividers attach to top/bottom via dados cut into the top/bottom
-  panels (the prompt only specified rabbets for the *end* pieces).
+  panels (the original prompt only specified rabbets for the *end*
+  pieces).
 - No face frame / no inset reveal — frameless construction, openings flush
   with the front.
 - Sheet-goods yield/nesting (how pieces lay out on 4×8 sheets) is out of
-  scope for v1.
+  scope — hasn't come up as a need.
