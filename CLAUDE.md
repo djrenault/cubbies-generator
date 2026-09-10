@@ -45,9 +45,10 @@ Cubby openings are flush with the front edges of the case.
 | Overall width | `OW` | derived ⇄ editable, see below |
 | Overall height | `OH` | derived ⇄ editable, see below |
 | Overall depth | `OD` | derived ⇄ editable, see below |
-| Dado depth | `dd` | default `t / 2` |
+| Dado depth | `dd` | default `t / 4`; constrained so `2*dd < t` (see Joinery Model) |
 | Rabbet depth (corners) | `rd` | default `t / 2` |
-| Backboard rabbet width | `bw` | how far the back rabbet reaches toward the front; default `3/8"` |
+| Backboard mount mode | — | `inset` \| `outset` toggle, default **outset** |
+| Backboard rabbet width | `bw` | inset mount only — how far the back rabbet reaches toward the front; default `3/8"` |
 
 **Assumption:** cell size is uniform for the whole grid (one `iw`/`ih`/`id`,
 not per-row or per-column). This matches "the inner dimensions of each
@@ -95,30 +96,46 @@ Corner rabbets between mating panels are modeled as a symmetric half-lap
 stack-up formulas above are exact regardless of `rd`. This is the same
 convention commercial cut-list tools use for rabbeted casework.
 
-Piece-by-piece:
+**Dado depth constraint:** an internal vertical divider carries a shelf on
+*both* sides at the same row-boundary height, so it gets two dados cut into
+it there — one from the left face, one from the right — facing each other
+across the same cross-section. Whatever isn't removed by either dado is the
+solid web left between them, so `2 * dd` must stay comfortably under `t`,
+not just under `t / 2` as it would for a single-sided dado. And because the
+*same* `dd` is also used for the single-sided dados in the end panels — so
+a shelf seats the same distance into its support on both ends, not deeper
+on one side than the other — `dd` can't be tuned differently per side.
+Default `dd = t / 4`, which leaves a `t / 2` web in internal dividers.
+Validate `2 * dd < t` (reject/flag otherwise), and warn if the remaining
+web (`t - 2 * dd`) drops below roughly `3/16"` or 20% of `t`, whichever is
+larger — thin webs split out.
 
-1. **Top / Bottom panel** — qty 1 each. `length = OW`, `width = OD`,
+Piece-by-piece. `panelDepth` is the depth (front-to-back) used for the top,
+bottom, and end panels, and depends on the backboard mount mode (see
+Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
+
+1. **Top / Bottom panel** — qty 1 each. `length = OW`, `width = panelDepth`,
    `thickness = t`.
    - Rabbet at each end (inside face) to receive the end panels:
-     `width = t`, `depth = rd`, running the full depth `OD`.
+     `width = t`, `depth = rd`, running the full `panelDepth`.
    - Dado on the inside face for each internal vertical divider:
      `width = t`, `depth = dd`, at each divider's x-position (see below).
-   - Rabbet along the back edge for the backboard: `width = bw`,
-     `depth = tb`, running the full width `OW`.
+   - **Inset mount only:** rabbet along the back edge for the backboard:
+     `width = bw`, `depth = tb`, running the full width `OW`.
 
 2. **End panels** (left, right) — qty 2. `length = OH - 2*t`,
-   `width = OD`, `thickness = t`.
+   `width = panelDepth`, `thickness = t`.
    - Dado on the inner face at each internal row boundary (`R - 1` of
      them) for shelves: `width = t`, `depth = dd`.
-   - Rabbet along the back edge for the backboard: `width = bw`,
-     `depth = tb`.
+   - **Inset mount only:** rabbet along the back edge for the backboard:
+     `width = bw`, `depth = tb`.
 
 3. **Internal vertical dividers** — qty `C - 1`. Same length as end panels
-   (`OH - 2*t`), `width = id` (they stop short of the back — they butt
-   against the backboard's front face rather than being rabbeted; only the
-   perimeter pieces capture the backboard), `thickness = t`.
+   (`OH - 2*t`), `width = id` always, regardless of mount mode (see
+   Backboard, below, for why this doesn't need a special case),
+   `thickness = t`.
    - Dado on **both** faces at each row boundary (`R - 1` positions) for
-     shelves.
+     shelves, depth `dd` each (see the dado depth constraint above).
    - Dado on the top and bottom edges, received into matching dados cut
      into the top/bottom panels at this divider's x-position (`width = t`,
      `depth = dd`) — this is how a continuous internal divider attaches to
@@ -128,8 +145,23 @@ Piece-by-piece:
 4. **Shelves** — qty `C * (R - 1)`. `length = iw + 2*dd` (reaches fully
    into the dado on each side), `width = id`, `thickness = t`.
 
-5. **Backboard** — qty 1. `width = (OW - 2*t) + 2*bw`,
-   `height = (OH - 2*t) + 2*bw`, `thickness = tb`.
+5. **Backboard** — qty 1, mount mode set by a toggle (`inset` | `outset`,
+   default **outset**):
+   - **Outset** (default): a single sheet screwed to the back edges of the
+     top, bottom, end panels, and internal dividers — all flush at depth
+     `id` from the front, so nothing needs rabbeting. Sized to the full
+     outer envelope: `width = OW`, `height = OH`, `thickness = tb`. No
+     backboard rabbet feature anywhere in this mode.
+   - **Inset:** captured in a rabbet run around the inside back edge of
+     the top, bottom, and end panels (see `panelDepth` and the rabbet
+     features on those pieces above), flush with their back face.
+     `width = (OW - 2*t) + 2*bw`, `height = (OH - 2*t) + 2*bw`,
+     `thickness = tb`. `bw` only matters in this mode.
+   - Either way, `OD = id + tb` (see Bidirectional Dimension Linking)
+     still gives the correct total front-to-back depth of the finished
+     piece: in inset mode the backboard sits flush within `panelDepth`;
+     in outset mode `panelDepth` is just `id` and the backboard adds `tb`
+     behind it. Same total, different split.
 
 **Divider x-positions** (left inner face = 0, +x toward the right end):
 divider `k` (1-indexed, `k = 1..C-1`) sits with its left face at
@@ -141,17 +173,22 @@ inside face of the bottom panel.
 
 ### Worked example (for sanity-checking an implementation)
 
-`R=3, C=2, t=3/4", iw=12", ih=10", id=11", tb=1/4", dd=rd=t/2=3/8", bw=3/8"`
+`R=3, C=2, t=3/4", iw=12", ih=10", id=11", tb=1/4", dd=t/4=3/16", rd=t/2=3/8", bw=3/8"`
 
 ```
 OW = 3*0.75 + 2*12       = 26.25"   (26 1/4")
 OH = 4*0.75 + 3*10       = 33"
 OD = 11 + 0.25           = 11.25"  (11 1/4")
 End/divider length        = 33 - 1.5 = 31.5"  (31 1/2")
-Shelf length               = 12 + 0.75 = 12.75"  (12 3/4")
+Shelf length               = 12 + 2*0.1875 = 12.375"  (12 3/8")
 Shelf count                = 2 * 2 = 4
 Vertical count              = 3  (2 end + 1 internal divider)
-Backboard                  = 25.5" x 32.25"  (25 1/2" x 32 1/4")
+Divider dado web check     = t - 2*dd = 0.75 - 0.375 = 0.375"  (3/8" remaining, safe)
+
+Outset backboard (default): panelDepth = id = 11"; backboard = OW x OH
+                             = 26.25" x 33"  (26 1/4" x 33")
+Inset backboard:            panelDepth = id + tb = 11.25"; backboard
+                             = 25.5" x 32.25"  (25 1/2" x 32 1/4")
 ```
 
 ## Units, Fractions & Precision
@@ -239,9 +276,6 @@ looks off:
 - Uniform cell size across the whole grid (no per-row/per-column sizing).
 - Internal dividers attach to top/bottom via dados cut into the top/bottom
   panels (the prompt only specified rabbets for the *end* pieces).
-- Internal dividers and shelves stop short of the back (depth = `id`)
-  rather than being rabbeted for the backboard; only the perimeter (top,
-  bottom, ends) captures it.
 - No face frame / no inset reveal — frameless construction, openings flush
   with the front.
 - Sheet-goods yield/nesting (how pieces lay out on 4×8 sheets) is out of
