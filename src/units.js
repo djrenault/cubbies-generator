@@ -10,10 +10,15 @@ function gcd(a, b) {
   return a || 1;
 }
 
-// Accepts "23 1/2", "23-1/2", "1/2", "-1/2", "0.75", "12"
+// Accepts "23 1/2", "23-1/2", "1/2", "-1/2", "0.75", "12", and any of
+// those with a trailing inch mark ("23 1/2\"") since that's exactly what
+// these fields display -- a field that isn't fully re-selected before
+// typing (a single click positions the cursor but doesn't select existing
+// content) ends up with the old value's trailing '"' still present.
 function parseFraction(input) {
   if (typeof input === 'number') return input;
-  const str = String(input ?? '').trim();
+  let str = String(input ?? '').trim();
+  if (str.endsWith('"')) str = str.slice(0, -1).trim();
   if (str === '') return NaN;
 
   const negative = str.startsWith('-');

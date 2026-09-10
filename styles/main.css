@@ -109,6 +109,11 @@ fieldset select {
   opacity: 0.45;
 }
 
+.field-error {
+  border-color: var(--error) !important;
+  background: #fbeceb !important;
+}
+
 .radio-group {
   display: flex;
   flex-direction: column;

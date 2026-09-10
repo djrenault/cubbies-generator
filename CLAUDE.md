@@ -218,6 +218,26 @@ Inset backboard:            panelDepth = id + tb = 11.25"; backboard
   plywood thickness — real 3/4" plywood is often 23/32" or ~0.703" actual.
   A few quick-pick buttons for common actual thicknesses (3/4, 23/32, 1/2,
   1/4) next to the thickness field is a reasonable nicety, not a requirement.
+- `parseFraction` strips a trailing `"` before parsing, since that's
+  exactly what a half-edited field contains: a single click into a field
+  positions the cursor but doesn't select its existing formatted text
+  (`26 1/4"`), so typing a replacement without first selecting-all inserts
+  into it rather than replacing it. `ui.js` fixes the interaction itself
+  (`selectAllOnFocus` selects the whole field's text on focus, deferred a
+  frame so a mouse-driven focus's own default cursor placement doesn't
+  immediately collapse the selection; `blurOnEnter` makes Enter commit and
+  reformat immediately instead of leaving raw typed text on screen until
+  something else happens to blur the field) — the trailing-quote-stripping
+  is defense in depth on top of that, not a substitute for it. Without the
+  focus fix, a field that fails to parse silently keeps showing the
+  garbled text until literally any other field's edit triggers a
+  `syncInputs()` re-sync, at which point it reformats back to the last
+  valid value with no visible connection to the edit that "did nothing" —
+  confirmed exactly that failure mode before fixing it. Invalid input gets
+  live feedback via a `field-error` CSS class toggled on the `input` event
+  (while the field is still focused, so `syncInputs()` won't touch it) —
+  `change` (on blur) is still what actually commits a valid value to state
+  or leaves it unchanged if invalid.
 
 ## 3D Viewer
 

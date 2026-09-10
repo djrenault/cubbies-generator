@@ -65,21 +65,70 @@ function showSettingsStatus(message, isError) {
   }, 4000);
 }
 
+// A single click into one of these fields positions the cursor but doesn't
+// select the existing text, so typing a replacement value *inserts* into
+// it instead (e.g. clicking "26 1/4"" and typing "30" produces
+// "3026 1/4""), which fails to parse -- the edit silently does nothing,
+// and the field appears to "revert" whenever anything else next triggers a
+// re-sync. Selecting-all on focus makes the common case (click, type a new
+// value) replace rather than insert. Deferred a frame because a
+// mouse-driven focus's default cursor-placement would otherwise collapse
+// a selection made synchronously in the focus handler itself.
+function selectAllOnFocus(el) {
+  el.addEventListener('focus', () => {
+    requestAnimationFrame(() => el.select());
+  });
+}
+
+// Pressing Enter fires 'change' (committing the value) but doesn't blur a
+// plain text input, so the field would be left showing the raw typed text
+// instead of the nicely-formatted fraction until something else happens to
+// blur it later. Blurring on Enter makes it reformat immediately, matching
+// the common expectation that Enter "confirms" an entry.
+function blurOnEnter(el) {
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') el.blur();
+  });
+}
+
 function bindUI(state, update) {
-  document.getElementById('rows').addEventListener('change', (e) => {
+  const rowsEl = document.getElementById('rows');
+  const colsEl = document.getElementById('columns');
+  selectAllOnFocus(rowsEl);
+  selectAllOnFocus(colsEl);
+  blurOnEnter(rowsEl);
+  blurOnEnter(colsEl);
+
+  // Live-validate on every keystroke (while still focused, so syncInputs
+  // won't touch it) so an invalid in-progress edit turns red immediately,
+  // rather than only discovering it was invalid after blur reverts it.
+  rowsEl.addEventListener('input', (e) => {
     const v = Math.round(parseFraction(e.target.value));
-    state.rows = Number.isFinite(v) && v >= 1 ? v : state.rows;
+    rowsEl.classList.toggle('field-error', !(Number.isFinite(v) && v >= 1));
+  });
+  rowsEl.addEventListener('change', (e) => {
+    const v = Math.round(parseFraction(e.target.value));
+    if (Number.isFinite(v) && v >= 1) state.rows = v;
     update();
   });
-  document.getElementById('columns').addEventListener('change', (e) => {
+  colsEl.addEventListener('input', (e) => {
     const v = Math.round(parseFraction(e.target.value));
-    state.columns = Number.isFinite(v) && v >= 1 ? v : state.columns;
+    colsEl.classList.toggle('field-error', !(Number.isFinite(v) && v >= 1));
+  });
+  colsEl.addEventListener('change', (e) => {
+    const v = Math.round(parseFraction(e.target.value));
+    if (Number.isFinite(v) && v >= 1) state.columns = v;
     update();
   });
 
   Object.keys(NUMERIC_FIELDS).forEach((field) => {
     const el = document.getElementById(field);
     if (!el) return;
+    selectAllOnFocus(el);
+    blurOnEnter(el);
+    el.addEventListener('input', (e) => {
+      el.classList.toggle('field-error', !Number.isFinite(parseFraction(e.target.value)));
+    });
     el.addEventListener('change', (e) => {
       const val = parseFraction(e.target.value);
       const cfg = NUMERIC_FIELDS[field];
@@ -156,13 +205,20 @@ function bindUI(state, update) {
 function syncInputs(state) {
   const rowsEl = document.getElementById('rows');
   const colsEl = document.getElementById('columns');
-  if (document.activeElement !== rowsEl) rowsEl.value = state.rows;
-  if (document.activeElement !== colsEl) colsEl.value = state.columns;
+  if (document.activeElement !== rowsEl) {
+    rowsEl.value = state.rows;
+    rowsEl.classList.remove('field-error');
+  }
+  if (document.activeElement !== colsEl) {
+    colsEl.value = state.columns;
+    colsEl.classList.remove('field-error');
+  }
 
   Object.keys(NUMERIC_FIELDS).forEach((field) => {
     const el = document.getElementById(field);
     if (!el || document.activeElement === el) return;
     el.value = formatFraction(state[field], state.precision);
+    el.classList.remove('field-error');
   });
 
   document.getElementById('backboardMount').value = state.backboardMount;
