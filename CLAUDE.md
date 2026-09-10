@@ -330,6 +330,88 @@ Requirements:
   — what gets printed shouldn't depend on whether the panel happened to be
   collapsed when the user hit print.
 
+## Sheet-Goods Nesting
+
+- Lays the cut list out onto `sheetW x sheetH` sheets (default 48" x 96",
+  a "4x8" sheet), grouped by thickness first — a sheet is single-thickness
+  stock, so `t`-thickness pieces (top/bottom/ends/dividers/shelves) and
+  `tb`-thickness backboard pieces always pack onto separate sheets, even
+  though they might otherwise fit together.
+- **On-demand, not live**: a "Generate Layout" button (`#generateLayoutBtn`),
+  not recomputed on every input change the way the rest of the app is —
+  nesting is real computational work, and there's no reason to spend it on
+  a design the user is still iterating on. `main.js` keeps the last
+  successfully computed piece list (`lastPieces`); the button reuses it
+  rather than the app running nesting on a cadence.
+- **Algorithm: guillotine packing with best-area-fit placement**
+  (`nesting.js`, `computeSheetLayout` / `packGroup`). Every cut this
+  produces is a straight, edge-to-edge cut — never a plunge cut or an
+  L-shaped remainder — which is what makes the result something a person
+  can actually execute with a track saw or table saw. A general-purpose
+  rectangle packer (e.g. full maximal-rectangles) can pack tighter but can
+  produce shapes that aren't achievable with straight full-length cuts, so
+  it was deliberately not used even though it would look better on a
+  waste-percentage metric alone. Best-area-fit (place each piece into
+  whichever free rectangle wastes the least area, tie-broken by shortest
+  leftover side) is a standard heuristic for this — not optimal (bin
+  packing is NP-hard) but reliably close and simple enough to hand-verify.
+  Pieces are placed largest-area-first.
+- **Kerf** (`kerf`, default `3/16"`) is applied as uniform padding on the
+  right/bottom of every piece's packing footprint, including where a piece
+  lands flush against the sheet's own edge (where, in reality, no
+  clearance is needed — the sheet boundary isn't a cut line). This
+  slightly overstates waste, by at most one kerf width per row/column per
+  sheet, and is far simpler than tracking which free-rectangle edges are
+  real cut lines versus the sheet boundary — not worth the complexity for
+  that precision.
+- **Rotation** (`allowRotation`, default on) lets the packer place a piece
+  on its side for a better fit. This tool doesn't track grain direction,
+  so there's nothing to respect by turning it off today; the setting
+  exists for a user who wants to preserve a face-grain orientation by
+  convention regardless.
+- Diagram labels use short, cut-list-style names plus an instance number
+  (`Shelf #1`, `Shelf #2`, ...) via `Cubbies.geometry.PIECE_LABELS` — the
+  same per-type mapping the cut list groups rows by, and for the same
+  reason: pieces within a type are interchangeable (identical size and
+  joinery), so there's no need for `geometry.js`'s fuller per-instance
+  `label` ("Shelf — Row 2, Column 1", built for 3D-viewer tooltips) on the
+  diagram — and the long form fits in a piece's drawn rectangle far less
+  often.
+- **Text fitting is a verified concern, not a nice-to-have.** A label
+  rotates 90° to run along a piece's long axis when the piece is notably
+  taller than wide in its drawn orientation (`r.h > r.w * 1.3`), since a
+  piece like an end panel packs far narrower than its label is long.
+  Beyond that, `fitLabels()` in `sheetlayout.js` measures each label with
+  the browser's own `getComputedTextLength()` — after the SVGs are
+  attached to the document, since accurate measurement needs a connected
+  element — and shrinks the font to fit, down to a floor of
+  `MIN_FONT_SIZE`. A `clip-path` per piece is still there as a hard
+  backstop, but it is deliberately not relied on alone: that was the
+  original approach, and it let text visibly bleed outside a piece's box
+  under specific conditions — print/PDF rendering did not reliably resolve
+  a `clip-path url()` reference to a `<clipPath>` appended to `<defs>`
+  *after* the element referencing it, even though normal on-screen
+  rendering tolerated that document order. Fixed by building `<defs>`
+  before anything that references a clipPath inside it, *and* by no longer
+  depending on clipping to do the actual fitting work. Verified with a
+  sweep checking every rendered label's bounding box against its piece's
+  box (accounting for the rotated case) across ten grid/sheet-size/kerf/
+  rotation combinations, including deliberately small sheet goods — zero
+  overflows.
+- Sheet diagrams are always drawn landscape (wider than tall) regardless
+  of which of `sheetW`/`sheetH` is larger — the conventional way a cut
+  diagram is drawn, independent of which axis the packing math itself uses
+  internally (`makeTransposer` in `sheetlayout.js` swaps for display only
+  when `sheetH > sheetW`).
+- A piece that doesn't fit the sheet in either orientation (even
+  accounting for kerf) is reported as an error in the Sheet Layout panel
+  rather than silently dropped — `computeSheetLayout`'s own `errors`
+  array, distinct from the live design-validation `state.errors`.
+- Print stylesheet: each sheet's diagram gets its own printed page
+  (`break-before: page` on `.sheet-diagram`), and — same pattern as the
+  cut list — the panel prints fully expanded and unscrolled regardless of
+  the on-screen collapse toggle.
+
 ## Settings Persistence & Import/Export
 
 - **Auto-save to `localStorage`** under the key `cubbies-generator:settings:v1`,
@@ -351,10 +433,14 @@ Requirements:
 - **What's persisted/exported:** every design parameter a user sets —
   grid, thicknesses, inner/overall dimensions, the axis-linking `source`,
   joinery depths and whether they're manually overridden, backboard mount
-  and rabbet width, display precision, and color mode. *Not* included:
-  `errors`/`warnings` (derived — `recompute()` regenerates them from the
-  fields above) or the cut-list collapse state (a view preference, not a
-  design parameter — see Cut List & Export, above).
+  and rabbet width, display precision, color mode, and the sheet-goods
+  nesting settings (`sheetW`, `sheetH`, `kerf`, `allowRotation`). *Not*
+  included: `errors`/`warnings` (derived — `recompute()` regenerates them
+  from the fields above), the cut-list or sheet-layout collapse states
+  (view preferences, not design parameters — see Cut List & Export and
+  Sheet-Goods Nesting, above), or the sheet layout result itself (also
+  derived — regenerated on demand from the pieces + those same settings,
+  see Sheet-Goods Nesting).
 - **Import is deliberately forgiving, not strict.** `applySerializedState`
   copies over only known keys whose value passes a basic type/enum check
   (finite number, boolean, or one of the expected enum strings) and
@@ -449,8 +535,11 @@ src/
   viewer3d.js   Three.js scene setup, mesh generation from geometry.js output,
                 color modes, controls
   cutlist.js    renders the cut list table from geometry.js output
+  nesting.js    pure functions: pieces -> sheet-packing layout
+                (guillotine/best-area-fit), grouped by thickness
+  sheetlayout.js  renders nesting.js's layout as SVG cut diagrams
   ui.js         input panel wiring, validation messages, settings
-                export/import/reset, cut-list toggle
+                export/import/reset, cut-list and sheet-layout toggles
 styles/
   main.css
   print.css
@@ -459,7 +548,10 @@ styles/
 Keep `geometry.js` free of any DOM/Three.js dependency — it should be a pure
 function from state to a plain-data piece list that both `viewer3d.js` and
 `cutlist.js` consume. This is what makes the cut list and the 3D model
-guaranteed to match.
+guaranteed to match. `nesting.js` follows the same principle: it's a pure
+function from a piece list to a plain-data sheet layout, with all rendering
+left to `sheetlayout.js` — so the packing logic can be tested and reasoned
+about independent of the DOM.
 
 ## Settled Design Decisions
 

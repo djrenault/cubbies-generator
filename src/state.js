@@ -32,6 +32,11 @@ function createDefaultState() {
     precision: 16, // display precision denominator (1/16" default)
     colorMode: 'realistic', // 'realistic' | 'identify'
 
+    sheetW: 48, // sheet-goods width for nesting, default a "4x8" sheet
+    sheetH: 96, // sheet-goods height for nesting
+    kerf: 0.1875, // saw kerf + safety gap between nested pieces, default 3/16"
+    allowRotation: true, // let nesting rotate pieces 90 deg for better yield
+
     // which field drives each axis: editing the other flips this
     source: { width: 'inner', height: 'inner', depth: 'inner' },
 
@@ -55,8 +60,11 @@ function resetState(state) {
 
 const STORAGE_KEY = 'cubbies-generator:settings:v1';
 
-const NUMERIC_FIELDS = ['rows', 'columns', 't', 'tb', 'iw', 'ih', 'id', 'ow', 'oh', 'od', 'dd', 'rd', 'bw', 'precision'];
-const BOOLEAN_FIELDS = ['ddManual', 'rdManual'];
+const NUMERIC_FIELDS = [
+  'rows', 'columns', 't', 'tb', 'iw', 'ih', 'id', 'ow', 'oh', 'od', 'dd', 'rd', 'bw', 'precision',
+  'sheetW', 'sheetH', 'kerf',
+];
+const BOOLEAN_FIELDS = ['ddManual', 'rdManual', 'allowRotation'];
 const ENUM_FIELDS = { backboardMount: ['inset', 'outset'], colorMode: ['realistic', 'identify'] };
 const AXES = ['width', 'height', 'depth'];
 

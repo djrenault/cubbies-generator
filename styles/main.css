@@ -174,25 +174,26 @@ fieldset select {
   border: 1px solid #ecd98f;
 }
 
-#cutlist-section {
+#cutlist-section,
+#sheetlayout-section {
   background: var(--panel);
   border-top: 1px solid var(--border);
   padding: 1rem 1.25rem;
 }
 
-.cutlist-header {
+.panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.cutlist-header h2 {
+.panel-header h2 {
   font-size: 1.05rem;
   margin: 0;
 }
 
-.cutlist-header button {
+.panel-header button {
   background: white;
   color: var(--text);
   border: 1px solid var(--border);
@@ -202,7 +203,7 @@ fieldset select {
   font-size: 0.85rem;
 }
 
-.cutlist-header button:hover {
+.panel-header button:hover {
   background: #f0ece3;
 }
 
@@ -210,6 +211,48 @@ fieldset select {
   margin-top: 0.75rem;
   max-height: 60vh;
   overflow: auto;
+}
+
+#sheetlayout {
+  margin-top: 0.75rem;
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.sheet-summary {
+  margin-top: 0;
+}
+
+.sheet-group-heading {
+  font-size: 0.95rem;
+  margin: 1.25rem 0 0.5rem;
+  color: var(--text);
+}
+
+.sheet-diagram {
+  margin-bottom: 1rem;
+}
+
+.sheet-caption {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 0 0 0.35rem;
+}
+
+.sheet-svg {
+  display: block;
+  width: 100%;
+  max-width: 900px;
+  height: auto;
+  background: #faf8f4;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.sheet-outline {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 0.15;
 }
 
 .cutlist-table {

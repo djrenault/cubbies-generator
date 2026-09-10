@@ -155,6 +155,43 @@ function dividerFeatures({ t, dd, id, rowGaps }) {
   return features;
 }
 
+// Short, cut-list-style names per piece type, shared by cutlist.js's
+// grouped rows and sheetlayout.js's diagram labels. Individual pieces
+// within a type are interchangeable (identical dimensions and joinery --
+// e.g. any "Shelf" can go in any shelf slot), which is exactly why the cut
+// list collapses them into one row with a qty count; the diagram labels
+// pieces the same way (short type name + an instance number) rather than
+// geometry.js's fuller per-instance `label` (built for 3D-viewer
+// tooltips/identification, where distinguishing "left" from "right" or one
+// divider from another actually matters).
+const PIECE_LABELS = {
+  'top-bottom': 'Top / Bottom Panel',
+  end: 'End Panel',
+  divider: 'Internal Divider',
+  shelf: 'Shelf',
+  backboard: 'Backboard',
+};
+
+// Maps a piece's raw {x,y,z} size onto woodworker-facing Length / Width /
+// Thickness — used by both cutlist.js (the table columns) and nesting.js
+// (length x width is exactly the sheet-goods footprint; thickness is which
+// sheet-stock group it belongs to). Single source of truth for that
+// mapping so the two can't drift apart.
+function pieceFootprint(piece) {
+  switch (piece.type) {
+    case 'top-bottom':
+    case 'shelf':
+      return { length: piece.size.x, width: piece.size.z, thickness: piece.size.y };
+    case 'end':
+    case 'divider':
+      return { length: piece.size.y, width: piece.size.z, thickness: piece.size.x };
+    case 'backboard':
+      return { length: piece.size.x, width: piece.size.y, thickness: piece.size.z };
+    default:
+      return { length: piece.size.x, width: piece.size.y, thickness: piece.size.z };
+  }
+}
+
 function computePieces(state) {
   if (state.errors.length) return { pieces: [], errors: state.errors };
 
@@ -264,6 +301,6 @@ function computePieces(state) {
 }
 
 window.Cubbies = window.Cubbies || {};
-window.Cubbies.geometry = { computePieces };
+window.Cubbies.geometry = { computePieces, pieceFootprint, PIECE_LABELS };
 
 })();

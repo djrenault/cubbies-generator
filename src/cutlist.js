@@ -2,33 +2,9 @@
   'use strict';
 
 const { formatFraction } = Cubbies.units;
+const { pieceFootprint, PIECE_LABELS } = Cubbies.geometry;
 
 const GROUP_ORDER = ['top-bottom', 'end', 'divider', 'shelf', 'backboard'];
-
-const GROUP_LABEL = {
-  'top-bottom': 'Top / Bottom Panel',
-  end: 'End Panel',
-  divider: 'Internal Divider',
-  shelf: 'Shelf',
-  backboard: 'Backboard',
-};
-
-// Maps a piece's raw {x,y,z} size onto woodworker-facing Length / Width /
-// Thickness columns, per piece type.
-function dimsFor(piece) {
-  switch (piece.type) {
-    case 'top-bottom':
-    case 'shelf':
-      return { length: piece.size.x, width: piece.size.z, thickness: piece.size.y };
-    case 'end':
-    case 'divider':
-      return { length: piece.size.y, width: piece.size.z, thickness: piece.size.x };
-    case 'backboard':
-      return { length: piece.size.x, width: piece.size.y, thickness: piece.size.z };
-    default:
-      return { length: piece.size.x, width: piece.size.y, thickness: piece.size.z };
-  }
-}
 
 function round4(v) {
   return Math.round((v || 0) * 10000) / 10000;
@@ -37,7 +13,7 @@ function round4(v) {
 // Identical pieces (same type, same nominal size, same joinery) collapse
 // into one cut-list row with a qty count.
 function signature(piece) {
-  const d = dimsFor(piece);
+  const d = pieceFootprint(piece);
   const feats = (piece.features || [])
     .map((f) => `${f.kind}:${round4(f.width)}:${round4(f.depth)}`)
     .sort()
@@ -87,13 +63,13 @@ function renderCutList(container, pieces, precision) {
 
   const tbody = document.createElement('tbody');
   rows.forEach((g) => {
-    const d = dimsFor(g);
+    const d = pieceFootprint(g);
     const notes = (g.features || []).map((f) => describeFeature(f, precision)).join('; ') || '—';
 
     const tr = document.createElement('tr');
 
     const cells = [
-      GROUP_LABEL[g.type] || g.type,
+      PIECE_LABELS[g.type] || g.type,
       String(g.qty),
       formatFraction(d.length, precision),
       formatFraction(d.width, precision),

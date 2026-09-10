@@ -16,31 +16,44 @@ const NUMERIC_FIELDS = {
   dd: { manual: 'ddManual' },
   rd: { manual: 'rdManual' },
   bw: {},
+  sheetW: {},
+  sheetH: {},
+  kerf: {},
 };
 
 const CUTLIST_VISIBLE_KEY = 'cubbies-generator:cutlistVisible';
+const SHEETLAYOUT_VISIBLE_KEY = 'cubbies-generator:sheetlayoutVisible';
 
-function getCutlistVisible() {
-  try {
-    const v = localStorage.getItem(CUTLIST_VISIBLE_KEY);
-    return v === null ? true : v === '1';
-  } catch (e) {
-    return true;
+function makeVisibilityToggle(storageKey, contentId, toggleId, defaultVisible) {
+  function get() {
+    try {
+      const v = localStorage.getItem(storageKey);
+      return v === null ? defaultVisible : v === '1';
+    } catch (e) {
+      return defaultVisible;
+    }
   }
-}
-
-function setCutlistVisible(visible) {
-  try {
-    localStorage.setItem(CUTLIST_VISIBLE_KEY, visible ? '1' : '0');
-  } catch (e) {
-    /* ignore */
+  function set(visible) {
+    try {
+      localStorage.setItem(storageKey, visible ? '1' : '0');
+    } catch (e) {
+      /* ignore */
+    }
   }
+  function apply(visible) {
+    document.getElementById(contentId).hidden = !visible;
+    document.getElementById(toggleId).textContent = visible ? 'Hide' : 'Show';
+  }
+  return { get, set, apply };
 }
 
-function applyCutlistVisible(visible) {
-  document.getElementById('cutlist').hidden = !visible;
-  document.getElementById('cutlistToggle').textContent = visible ? 'Hide' : 'Show';
-}
+const cutlistVisibility = makeVisibilityToggle(CUTLIST_VISIBLE_KEY, 'cutlist', 'cutlistToggle', true);
+const sheetlayoutVisibility = makeVisibilityToggle(
+  SHEETLAYOUT_VISIBLE_KEY,
+  'sheetlayout',
+  'sheetlayoutToggle',
+  true
+);
 
 function downloadJSON(filename, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -91,7 +104,7 @@ function blurOnEnter(el) {
   });
 }
 
-function bindUI(state, update) {
+function bindUI(state, update, generateLayout) {
   const rowsEl = document.getElementById('rows');
   const colsEl = document.getElementById('columns');
   selectAllOnFocus(rowsEl);
@@ -194,10 +207,29 @@ function bindUI(state, update) {
 
   document.getElementById('cutlistToggle').addEventListener('click', () => {
     const visible = document.getElementById('cutlist').hidden;
-    setCutlistVisible(visible);
-    applyCutlistVisible(visible);
+    cutlistVisibility.set(visible);
+    cutlistVisibility.apply(visible);
   });
-  applyCutlistVisible(getCutlistVisible());
+  cutlistVisibility.apply(cutlistVisibility.get());
+
+  document.getElementById('sheetlayoutToggle').addEventListener('click', () => {
+    const visible = document.getElementById('sheetlayout').hidden;
+    sheetlayoutVisibility.set(visible);
+    sheetlayoutVisibility.apply(visible);
+  });
+  sheetlayoutVisibility.apply(sheetlayoutVisibility.get());
+
+  document.getElementById('allowRotation').addEventListener('change', (e) => {
+    state.allowRotation = e.target.checked;
+  });
+
+  document.getElementById('generateLayoutBtn').addEventListener('click', () => {
+    // Make sure the result is actually visible even if the section was
+    // previously collapsed -- clicking Generate should show what it made.
+    sheetlayoutVisibility.set(true);
+    sheetlayoutVisibility.apply(true);
+    generateLayout();
+  });
 
   syncInputs(state);
 }
@@ -233,6 +265,8 @@ function syncInputs(state) {
   document.querySelectorAll('input[name="colorMode"]').forEach((radio) => {
     radio.checked = radio.value === state.colorMode;
   });
+
+  document.getElementById('allowRotation').checked = state.allowRotation;
 }
 
 function renderMessages(state) {

@@ -82,6 +82,22 @@
       </fieldset>
 
       <fieldset>
+        <legend>Sheet goods</legend>
+        <label>Sheet width <input id="sheetW" type="text" /></label>
+        <label>Sheet height <input id="sheetH" type="text" /></label>
+        <label>Kerf / gap <input id="kerf" type="text" /></label>
+        <label><input id="allowRotation" type="checkbox" /> Allow pieces to rotate 90°</label>
+        <div class="button-row">
+          <button id="generateLayoutBtn" type="button">Generate Layout</button>
+        </div>
+        <p class="hint">
+          Lays the cut list out onto sheets, grouped by thickness, leaving
+          the kerf/gap between every pair of pieces. Regenerate after
+          changing the design — this doesn't update live.
+        </p>
+      </fieldset>
+
+      <fieldset>
         <legend>Settings</legend>
         <div class="button-row">
           <button id="exportBtn" type="button">Export JSON</button>
@@ -97,11 +113,21 @@
   </main>
 
   <section id="cutlist-section">
-    <div class="cutlist-header">
+    <div class="panel-header">
       <h2>Cut List</h2>
       <button id="cutlistToggle" type="button">Hide</button>
     </div>
     <div id="cutlist"></div>
+  </section>
+
+  <section id="sheetlayout-section">
+    <div class="panel-header">
+      <h2>Sheet Layout</h2>
+      <button id="sheetlayoutToggle" type="button">Hide</button>
+    </div>
+    <div id="sheetlayout">
+      <p class="hint">Click &ldquo;Generate Layout&rdquo; to lay the cut list out onto sheets.</p>
+    </div>
   </section>
 
   <!--
@@ -123,6 +149,8 @@
   <script src="src/geometry.js"></script>
   <script src="src/viewer3d.js"></script>
   <script src="src/cutlist.js"></script>
+  <script src="src/nesting.js"></script>
+  <script src="src/sheetlayout.js"></script>
   <script src="src/ui.js"></script>
   <script src="src/main.js"></script>
 </body>

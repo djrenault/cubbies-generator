@@ -4,27 +4,32 @@
     display: none !important;
   }
 
-  #cutlist-section {
+  #cutlist-section,
+  #sheetlayout-section {
     border-top: none;
     padding: 0;
   }
 
-  .cutlist-header button {
+  .panel-header button {
     display: none !important;
   }
 
-  .cutlist-header h2 {
+  .panel-header h2 {
     font-size: 1.3rem;
   }
 
-  /* Always print the full cut list, even if the on-screen toggle is
-     collapsed -- [hidden] otherwise sets display:none via the UA
-     stylesheet, which this !important rule overrides. */
-  #cutlist[hidden] {
+  /* Always print the full cut list and sheet layout, even if the
+     on-screen toggle is collapsed -- [hidden] otherwise sets
+     display:none via the UA stylesheet, which this !important rule
+     overrides. What gets printed shouldn't depend on which panels
+     happened to be expanded when the user hit print. */
+  #cutlist[hidden],
+  #sheetlayout[hidden] {
     display: block !important;
   }
 
-  #cutlist {
+  #cutlist,
+  #sheetlayout {
     max-height: none;
     overflow: visible;
   }
@@ -41,5 +46,20 @@
 
   .cutlist-table tr {
     break-inside: avoid;
+  }
+
+  .sheet-diagram {
+    break-before: page;
+    break-inside: avoid;
+  }
+
+  .sheet-diagram:first-of-type {
+    break-before: auto;
+  }
+
+  .sheet-svg {
+    max-width: 100%;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
