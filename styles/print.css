@@ -1,0 +1,39 @@
+@media print {
+  #app-header button,
+  #sidebar fieldset,
+  #messages,
+  #viewer {
+    display: none !important;
+  }
+
+  #app {
+    height: auto;
+    display: block;
+  }
+
+  #sidebar {
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    border: none;
+    padding: 0;
+  }
+
+  #cutlist-section h2 {
+    font-size: 1.3rem;
+  }
+
+  .cutlist-table {
+    font-size: 11pt;
+  }
+
+  .cutlist-table th {
+    background: #eee !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .cutlist-table tr {
+    break-inside: avoid;
+  }
+}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cubbies Generator</title>
+  <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/print.css" media="print" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.min.js",
+        "three/addons/": "./vendor/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header id="app-header">
+    <h1>Cubbies Generator</h1>
+    <button id="printBtn" type="button">Print / Export PDF</button>
+  </header>
+
+  <main id="app">
+    <section id="sidebar">
+      <div id="messages"></div>
+
+      <fieldset>
+        <legend>Grid</legend>
+        <label>Rows <input id="rows" type="text" inputmode="numeric" /></label>
+        <label>Columns <input id="columns" type="text" inputmode="numeric" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Material</legend>
+        <label>Case plywood thickness <input id="t" type="text" /></label>
+        <label>Backboard thickness <input id="tb" type="text" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Inner dimensions (per cubby)</legend>
+        <label>Inner width <input id="iw" type="text" /></label>
+        <label>Inner height <input id="ih" type="text" /></label>
+        <label>Inner depth <input id="id" type="text" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Overall dimensions</legend>
+        <label>Overall width <input id="ow" type="text" /></label>
+        <label>Overall height <input id="oh" type="text" /></label>
+        <label>Overall depth <input id="od" type="text" /></label>
+        <p class="hint">
+          Overall and inner dimensions are linked — whichever field you edit
+          last drives the other.
+        </p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Joinery</legend>
+        <label>Dado depth <input id="dd" type="text" /></label>
+        <label>Rabbet depth (corners) <input id="rd" type="text" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Backboard</legend>
+        <label>
+          Mount
+          <select id="backboardMount">
+            <option value="outset">Outset (screwed to back)</option>
+            <option value="inset">Inset (rabbeted, flush)</option>
+          </select>
+        </label>
+        <label id="bwField">Rabbet width (inset only) <input id="bw" type="text" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Display</legend>
+        <label>
+          Precision
+          <select id="precision">
+            <option value="32">1/32"</option>
+            <option value="16" selected>1/16"</option>
+            <option value="8">1/8"</option>
+          </select>
+        </label>
+        <div class="radio-group">
+          <label><input type="radio" name="colorMode" value="realistic" /> Realistic wood</label>
+          <label><input type="radio" name="colorMode" value="identify" /> Identify pieces</label>
+        </div>
+      </fieldset>
+
+      <section id="cutlist-section">
+        <h2>Cut List</h2>
+        <div id="cutlist"></div>
+      </section>
+    </section>
+
+    <section id="viewer"></section>
+  </main>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

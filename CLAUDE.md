@@ -243,11 +243,23 @@ Requirements:
 ## Tech Stack & Architecture
 
 Plain HTML/CSS/JS, no build step, no framework — this is explicitly an
-"html-based" tool and the scope doesn't justify a bundler. Three.js loaded
-from a pinned CDN URL (or an import map) via native `<script type="module">`.
+"html-based" tool and the scope doesn't justify a bundler. Three.js is
+loaded via a native `<script type="importmap">` + `<script type="module">`,
+pointed at a **vendored local copy** (`vendor/three/`) rather than a CDN URL:
+this keeps the tool fully self-contained and usable offline (a shop
+computer with no internet access can still open `index.html`), and sidesteps
+CDN reachability being environment-dependent. Update the vendored copy by
+fetching a pinned version's `build/three.module.min.js` and
+`examples/jsm/controls/OrbitControls.js` from the `three` npm package (do
+not hand-edit them).
 
 ```
 index.html
+vendor/
+  three/
+    build/three.module.min.js
+    examples/jsm/controls/OrbitControls.js
+    LICENSE
 src/
   main.js       entry point, wires state + ui + viewer3d + cutlist together
   state.js      parameter store, bidirectional axis-linking logic
