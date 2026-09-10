@@ -6,16 +6,6 @@
   <title>Cubbies Generator</title>
   <link rel="stylesheet" href="styles/main.css" />
   <link rel="stylesheet" href="styles/print.css" media="print" />
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "./vendor/three/build/three.module.min.js",
-        "three/addons/": "./vendor/three/examples/jsm/",
-        "three-bvh-csg": "./vendor/three-bvh-csg/index.module.js",
-        "three-mesh-bvh": "./vendor/three-mesh-bvh/index.module.js"
-      }
-    }
-  </script>
 </head>
 <body>
   <header id="app-header">
@@ -100,6 +90,26 @@
     <section id="viewer"></section>
   </main>
 
-  <script type="module" src="src/main.js"></script>
+  <!--
+    Classic (non-module) scripts throughout, on purpose: ES modules and
+    import maps cannot load over file:// in any browser (module fetches are
+    CORS-restricted by spec), which breaks the "just double-click
+    index.html" usage this tool is meant for. See CLAUDE.md
+    "Tech Stack & Architecture". Each vendored library attaches a global;
+    our own src/*.js files share a window.Cubbies namespace instead of
+    import/export. Load order below matters.
+  -->
+  <script src="vendor/three/build/three.min.js"></script>
+  <script src="vendor/three-mesh-bvh/index.umd.js"></script>
+  <script src="vendor/three-bvh-csg/index.umd.js"></script>
+  <script src="vendor/three/examples/js/controls/OrbitControls.classic.js"></script>
+
+  <script src="src/units.js"></script>
+  <script src="src/state.js"></script>
+  <script src="src/geometry.js"></script>
+  <script src="src/viewer3d.js"></script>
+  <script src="src/cutlist.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/main.js"></script>
 </body>
 </html>

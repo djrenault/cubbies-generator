@@ -251,31 +251,72 @@ Requirements:
 ## Tech Stack & Architecture
 
 Plain HTML/CSS/JS, no build step, no framework — this is explicitly an
-"html-based" tool and the scope doesn't justify a bundler. Three.js is
-loaded via a native `<script type="importmap">` + `<script type="module">`,
-pointed at a **vendored local copy** (`vendor/three/`) rather than a CDN URL:
-this keeps the tool fully self-contained and usable offline (a shop
-computer with no internet access can still open `index.html`), and sidesteps
-CDN reachability being environment-dependent. Update the vendored copy by
-fetching a pinned version's `build/three.module.min.js` and
-`examples/jsm/controls/OrbitControls.js` from the `three` npm package (do
-not hand-edit them). Grooved joinery in the viewer (see 3D Viewer, below)
-uses `three-bvh-csg` for box-subtraction CSG, which itself depends on
-`three-mesh-bvh` — both vendored the same way, from their npm packages'
-`build/index.module.js`.
+"html-based" tool and the scope doesn't justify a bundler.
+
+**No ES modules, no import maps — classic `<script>` tags only.** This
+matters more than it looks: `type="module"` scripts (and import maps) are
+CORS-restricted by spec and simply fail to load over `file://` in *every*
+browser (Chrome included, not just Firefox/Safari — verified directly), so
+a module-based build breaks the entire point of vendoring dependencies
+locally, which is that a user can download the repo and double-click
+`index.html` with no server and no internet. So: every vendored library is
+its plain-global (UMD or classic-script) build, and our own `src/*.js`
+files are classic scripts too, each wrapped in an IIFE and sharing a
+`window.Cubbies` namespace instead of `import`/`export` — e.g. `units.js`
+ends with `window.Cubbies.units = { parseFraction, formatFraction, ... };`,
+and a dependent file reads `const { parseFraction } = Cubbies.units;`
+inside its own IIFE. The IIFE wrapper isn't optional: classic scripts on a
+page share one global lexical scope, so without it two files destructuring
+the same name (`formatFraction`, say) collide as a duplicate-declaration
+error. Load order in `index.html` matters and follows the dependency chain
+below.
+
+Vendored libraries, all under `vendor/`, fetched from npm packages and not
+hand-edited except where noted:
+
+- **`three/build/three.min.js`** — Three.js's plain-global build (sets
+  `window.THREE`). It carries a console warning about being deprecated
+  since r150 "with removal at r160" — that's a maintainer's future-tense
+  threat about *new* fetches of the package, not something that affects an
+  already-vendored, never-auto-upgraded copy; the file works fine and the
+  warning is safe to ignore. Pin a specific version; re-vendor by refetching
+  the same file from a newer `three` npm package if ever upgrading.
+- **`three-mesh-bvh/index.umd.js`** and **`three-bvh-csg/index.umd.js`** —
+  each package's own UMD build (`build/index.umd.cjs` in the npm package;
+  rename to `.js` when vendoring, content untouched). UMD builds already
+  fall back to attaching a global when neither CommonJS nor AMD is present,
+  so these work as plain `<script src>` tags with no edits. Sets
+  `window.MeshBVHLib` and `window.ThreBvhCsg` (note: no second "e" in
+  "Thre" — that's the actual global name the library ships, a typo in the
+  library itself) respectively. `three-mesh-bvh` is pinned to `0.6.8`
+  specifically (not latest) because `three-bvh-csg` 0.0.17 was built
+  against that range and a newer `three-mesh-bvh` prints an option-name
+  deprecation warning on every CSG call — cosmetic, but pinning avoids it.
+- **`three/examples/js/controls/OrbitControls.classic.js`** — Three.js
+  dropped the classic-script build of OrbitControls somewhere around r148,
+  shipping only the ES module version now (`examples/jsm/...`). This is a
+  **mechanical, minimal hand-conversion** of that module to a classic
+  script: the `import { A, B, ... } from 'three';` line becomes
+  `const { A, B, ... } = THREE;` (identical name list, so every reference
+  in the ~1400 lines below it is untouched), and the trailing
+  `export { OrbitControls };` becomes `window.OrbitControls = OrbitControls;`.
+  Nothing else in the file changes. To update: re-run that same two-line
+  transform against a newer `examples/jsm/controls/OrbitControls.js` from
+  the `three` npm package — don't hand-edit the converted file directly, so
+  the diff against upstream stays auditable.
 
 ```
 index.html
 vendor/
   three/
-    build/three.module.min.js
-    examples/jsm/controls/OrbitControls.js
+    build/three.min.js
+    examples/js/controls/OrbitControls.classic.js
     LICENSE
   three-bvh-csg/
-    index.module.js
+    index.umd.js
     LICENSE
   three-mesh-bvh/
-    index.module.js
+    index.umd.js
     LICENSE
 src/
   main.js       entry point, wires state + ui + viewer3d + cutlist together

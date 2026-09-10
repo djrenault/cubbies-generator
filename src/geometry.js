@@ -19,6 +19,9 @@
 // width `t`, starting at local 0. Used for both the column axis (bays =
 // cubby columns, gaps = internal dividers) and the row axis (bays = cubby
 // rows, gaps = internal shelves).
+(function () {
+  'use strict';
+
 function layoutAxis(count, innerSize, t) {
   const bays = [];
   const gaps = [];
@@ -142,7 +145,7 @@ function dividerFeatures({ t, dd, id, rowGaps }) {
   return features;
 }
 
-export function computePieces(state) {
+function computePieces(state) {
   if (state.errors.length) return { pieces: [], errors: state.errors };
 
   const { rows: R, columns: C, t, tb, iw, ih, id, ow: OW, oh: OH, dd, rd, bw, backboardMount } = state;
@@ -243,3 +246,8 @@ export function computePieces(state) {
 
   return { pieces, errors: [] };
 }
+
+window.Cubbies = window.Cubbies || {};
+window.Cubbies.geometry = { computePieces };
+
+})();

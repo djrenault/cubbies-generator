@@ -1,4 +1,8 @@
-import {
+// Converted from the three.js ES module (examples/jsm/controls/OrbitControls.js)
+// to a classic script so it works over file:// in every browser (ES modules
+// cannot load via file:// due to CORS restrictions on module fetches). Only the
+// import/export lines were touched -- see CLAUDE.md "Tech Stack & Architecture".
+const {
 	EventDispatcher,
 	MOUSE,
 	Quaternion,
@@ -9,7 +13,7 @@ import {
 	Plane,
 	Ray,
 	MathUtils
-} from 'three';
+} = THREE;
 
 // OrbitControls performs orbiting, dollying (zooming), and panning.
 // Unlike TrackballControls, it maintains the "up" direction object.up (+Y by default).
@@ -1414,4 +1418,4 @@ class OrbitControls extends EventDispatcher {
 
 }
 
-export { OrbitControls };
+window.OrbitControls = OrbitControls;

@@ -1,4 +1,7 @@
-import { formatFraction } from './units.js';
+(function () {
+  'use strict';
+
+const { formatFraction } = Cubbies.units;
 
 const GROUP_ORDER = ['top-bottom', 'end', 'divider', 'shelf', 'backboard'];
 
@@ -52,7 +55,7 @@ function describeFeature(f, precision) {
   return text;
 }
 
-export function renderCutList(container, pieces, precision) {
+function renderCutList(container, pieces, precision) {
   const groups = new Map();
   pieces.forEach((p) => {
     const sig = signature(p);
@@ -108,3 +111,8 @@ export function renderCutList(container, pieces, precision) {
 
   container.appendChild(table);
 }
+
+window.Cubbies = window.Cubbies || {};
+window.Cubbies.cutlist = { renderCutList };
+
+})();

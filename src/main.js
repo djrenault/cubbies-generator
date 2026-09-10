@@ -1,8 +1,11 @@
-import { createDefaultState, recompute } from './state.js';
-import { computePieces } from './geometry.js';
-import { createViewer } from './viewer3d.js';
-import { renderCutList } from './cutlist.js';
-import { bindUI, syncInputs, renderMessages } from './ui.js';
+(function () {
+  'use strict';
+
+const { createDefaultState, recompute } = Cubbies.state;
+const { computePieces } = Cubbies.geometry;
+const { createViewer } = Cubbies.viewer3d;
+const { renderCutList } = Cubbies.cutlist;
+const { bindUI, syncInputs, renderMessages } = Cubbies.ui;
 
 const state = createDefaultState();
 const viewer = createViewer(document.getElementById('viewer'));
@@ -23,3 +26,5 @@ function update() {
 
 bindUI(state, update);
 update();
+
+})();

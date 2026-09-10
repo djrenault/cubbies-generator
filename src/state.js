@@ -2,7 +2,10 @@
 // See CLAUDE.md "Bidirectional Dimension Linking" and "Joinery Model" for
 // the governing equations this module implements.
 
-export function createDefaultState() {
+(function () {
+  'use strict';
+
+function createDefaultState() {
   const state = {
     rows: 3,
     columns: 2,
@@ -40,7 +43,7 @@ export function createDefaultState() {
   return state;
 }
 
-export function recompute(state) {
+function recompute(state) {
   if (!state.ddManual) state.dd = state.t / 4;
   if (!state.rdManual) state.rd = state.t / 2;
 
@@ -108,3 +111,8 @@ function validate(state) {
   state.errors = errors;
   state.warnings = warnings;
 }
+
+window.Cubbies = window.Cubbies || {};
+window.Cubbies.state = { createDefaultState, recompute };
+
+})();

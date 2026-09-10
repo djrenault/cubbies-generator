@@ -1,4 +1,7 @@
-export function gcd(a, b) {
+(function () {
+  'use strict';
+
+function gcd(a, b) {
   a = Math.abs(Math.round(a));
   b = Math.abs(Math.round(b));
   while (b) {
@@ -8,7 +11,7 @@ export function gcd(a, b) {
 }
 
 // Accepts "23 1/2", "23-1/2", "1/2", "-1/2", "0.75", "12"
-export function parseFraction(input) {
+function parseFraction(input) {
   if (typeof input === 'number') return input;
   const str = String(input ?? '').trim();
   if (str === '') return NaN;
@@ -45,7 +48,7 @@ export function parseFraction(input) {
 
 // Renders a decimal-inch value as a mixed-number fraction string, rounded
 // to the nearest 1/precisionDenominator, reduced to lowest terms.
-export function formatFraction(value, precisionDenominator = 16) {
+function formatFraction(value, precisionDenominator = 16) {
   if (!Number.isFinite(value)) return '—';
 
   const sign = value < 0 ? '-' : '';
@@ -65,3 +68,8 @@ export function formatFraction(value, precisionDenominator = 16) {
   if (whole === 0) return `${sign}${rem}/${den}"`;
   return `${sign}${whole} ${rem}/${den}"`;
 }
+
+window.Cubbies = window.Cubbies || {};
+window.Cubbies.units = { gcd, parseFraction, formatFraction };
+
+})();

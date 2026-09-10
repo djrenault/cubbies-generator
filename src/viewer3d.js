@@ -1,6 +1,10 @@
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+// THREE, OrbitControls, and ThreBvhCsg are classic-script globals — see
+// index.html for load order and CLAUDE.md "Tech Stack & Architecture" for
+// why this isn't ES modules (file:// compatibility).
+(function () {
+  'use strict';
+
+const { Brush, Evaluator, SUBTRACTION } = ThreBvhCsg;
 
 const GOLDEN_ANGLE = 137.508;
 
@@ -91,7 +95,7 @@ function makeWoodTexture() {
   return texture;
 }
 
-export function createViewer(container) {
+function createViewer(container) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xe7e2d8);
 
@@ -208,3 +212,8 @@ export function createViewer(container) {
     },
   };
 }
+
+window.Cubbies = window.Cubbies || {};
+window.Cubbies.viewer3d = { createViewer };
+
+})();

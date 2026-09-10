@@ -1,4 +1,7 @@
-import { parseFraction, formatFraction } from './units.js';
+(function () {
+  'use strict';
+
+const { parseFraction, formatFraction } = Cubbies.units;
 
 // field id -> how it feeds back into state
 const NUMERIC_FIELDS = {
@@ -15,7 +18,7 @@ const NUMERIC_FIELDS = {
   bw: {},
 };
 
-export function bindUI(state, update) {
+function bindUI(state, update) {
   document.getElementById('rows').addEventListener('change', (e) => {
     const v = Math.round(parseFraction(e.target.value));
     state.rows = Number.isFinite(v) && v >= 1 ? v : state.rows;
@@ -66,7 +69,7 @@ export function bindUI(state, update) {
   syncInputs(state);
 }
 
-export function syncInputs(state) {
+function syncInputs(state) {
   const rowsEl = document.getElementById('rows');
   const colsEl = document.getElementById('columns');
   if (document.activeElement !== rowsEl) rowsEl.value = state.rows;
@@ -92,7 +95,7 @@ export function syncInputs(state) {
   });
 }
 
-export function renderMessages(state) {
+function renderMessages(state) {
   const el = document.getElementById('messages');
   el.innerHTML = '';
   state.errors.forEach((msg) => {
@@ -108,3 +111,8 @@ export function renderMessages(state) {
     el.appendChild(div);
   });
 }
+
+window.Cubbies = window.Cubbies || {};
+window.Cubbies.ui = { bindUI, syncInputs, renderMessages };
+
+})();
