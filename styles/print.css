@@ -1,26 +1,32 @@
 @media print {
   #app-header button,
-  #sidebar fieldset,
-  #messages,
-  #viewer {
+  #workspace {
     display: none !important;
   }
 
-  #app {
-    height: auto;
-    display: block;
-  }
-
-  #sidebar {
-    width: auto;
-    max-height: none;
-    overflow: visible;
-    border: none;
+  #cutlist-section {
+    border-top: none;
     padding: 0;
   }
 
-  #cutlist-section h2 {
+  .cutlist-header button {
+    display: none !important;
+  }
+
+  .cutlist-header h2 {
     font-size: 1.3rem;
+  }
+
+  /* Always print the full cut list, even if the on-screen toggle is
+     collapsed -- [hidden] otherwise sets display:none via the UA
+     stylesheet, which this !important rule overrides. */
+  #cutlist[hidden] {
+    display: block !important;
+  }
+
+  #cutlist {
+    max-height: none;
+    overflow: visible;
   }
 
   .cutlist-table {

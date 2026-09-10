@@ -1,19 +1,20 @@
 (function () {
   'use strict';
 
-const { createDefaultState, recompute } = Cubbies.state;
+const { loadOrCreateState, recompute, saveToStorage } = Cubbies.state;
 const { computePieces } = Cubbies.geometry;
 const { createViewer } = Cubbies.viewer3d;
 const { renderCutList } = Cubbies.cutlist;
 const { bindUI, syncInputs, renderMessages } = Cubbies.ui;
 
-const state = createDefaultState();
+const state = loadOrCreateState();
 const viewer = createViewer(document.getElementById('viewer'));
 
 function update() {
   recompute(state);
   syncInputs(state);
   renderMessages(state);
+  saveToStorage(state);
 
   const { pieces, errors } = computePieces(state);
   if (errors.length === 0) {

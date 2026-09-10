@@ -259,6 +259,59 @@ Requirements:
   "Print / Export PDF" button that calls `window.print()`. This needs no
   extra dependency and produces a clean vector PDF via the browser's native
   print-to-PDF — prefer this over pulling in a PDF-generation library.
+- Lives in its own full-width section below the sidebar/viewer row (not
+  inside the sidebar), since a large grid's table is easier to read at full
+  width than squeezed into a ~380px column. Collapsible via a header
+  button (`#cutlistToggle`); the collapsed/expanded state persists across
+  reloads via a small dedicated `localStorage` key
+  (`cubbies-generator:cutlistVisible`) separate from the saved-settings key
+  below — it's a view preference, not a design parameter, so it's
+  deliberately excluded from Import/Export. The print stylesheet always
+  forces the cut list fully visible and unscrolled regardless of the
+  on-screen toggle state (`#cutlist[hidden] { display: block !important; }`)
+  — what gets printed shouldn't depend on whether the panel happened to be
+  collapsed when the user hit print.
+
+## Settings Persistence & Import/Export
+
+- **Auto-save to `localStorage`** under the key `cubbies-generator:settings:v1`,
+  written on every `update()` in `main.js` (i.e. after every input change)
+  and read back once on page load (`Cubbies.state.loadOrCreateState()`,
+  which layers whatever was saved over `createDefaultState()`'s fields).
+  Wrapped in `try/catch` everywhere it touches `localStorage` — private
+  browsing, disabled storage, or a full quota should degrade to "nothing
+  persists," never crash the app.
+- **Export** (`Export JSON` button) downloads the current design as a JSON
+  file via a `Blob` + temporary `<a download>` (no server, no library
+  needed for this). **Import** (`Import JSON` button, backed by a hidden
+  `<input type="file">`) reads a file back and applies it on top of the
+  current state. Both use the same serialization as auto-save
+  (`Cubbies.state.serializeState` / `applySerializedState`), so an
+  exported file and what's in `localStorage` are the same shape — just
+  JSON, no YAML/other format, since this tool has no dependency-free way
+  to parse YAML in the browser and JSON needs none.
+- **What's persisted/exported:** every design parameter a user sets —
+  grid, thicknesses, inner/overall dimensions, the axis-linking `source`,
+  joinery depths and whether they're manually overridden, backboard mount
+  and rabbet width, display precision, and color mode. *Not* included:
+  `errors`/`warnings` (derived — `recompute()` regenerates them from the
+  fields above) or the cut-list collapse state (a view preference, not a
+  design parameter — see Cut List & Export, above).
+- **Import is deliberately forgiving, not strict.** `applySerializedState`
+  copies over only known keys whose value passes a basic type/enum check
+  (finite number, boolean, or one of the expected enum strings) and
+  silently ignores anything else — an unrecognized key, a wrong type, a
+  future field this version doesn't know about, or a hand-edited typo just
+  doesn't get applied, rather than failing the whole import. A genuinely
+  unparseable file (bad JSON) is caught and reported via a small status
+  line (`#settingsStatus`), not thrown.
+- **Reset to Defaults** button calls `Cubbies.state.resetState(state)`,
+  which overwrites the existing state object's fields in place (rather
+  than creating a new object) since `main.js`, `ui.js`, and the viewer all
+  close over that one object for the app's lifetime — replacing the
+  reference instead of mutating it would silently break every closure that
+  still pointed at the old one. Also clears the `localStorage` key, and
+  confirms first (`window.confirm`) since there's no undo.
 
 ## Tech Stack & Architecture
 

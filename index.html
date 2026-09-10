@@ -13,7 +13,7 @@
     <button id="printBtn" type="button">Print / Export PDF</button>
   </header>
 
-  <main id="app">
+  <main id="workspace">
     <section id="sidebar">
       <div id="messages"></div>
 
@@ -81,14 +81,28 @@
         </div>
       </fieldset>
 
-      <section id="cutlist-section">
-        <h2>Cut List</h2>
-        <div id="cutlist"></div>
-      </section>
+      <fieldset>
+        <legend>Settings</legend>
+        <div class="button-row">
+          <button id="exportBtn" type="button">Export JSON</button>
+          <button id="importBtn" type="button">Import JSON</button>
+          <button id="resetBtn" type="button">Reset to Defaults</button>
+        </div>
+        <input id="importFile" type="file" accept="application/json,.json" hidden />
+        <p id="settingsStatus" class="hint"></p>
+      </fieldset>
     </section>
 
     <section id="viewer"></section>
   </main>
+
+  <section id="cutlist-section">
+    <div class="cutlist-header">
+      <h2>Cut List</h2>
+      <button id="cutlistToggle" type="button">Hide</button>
+    </div>
+    <div id="cutlist"></div>
+  </section>
 
   <!--
     Classic (non-module) scripts throughout, on purpose: ES modules and

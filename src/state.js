@@ -43,6 +43,99 @@ function createDefaultState() {
   return state;
 }
 
+// Resets an existing state object's fields to fresh defaults, in place --
+// callers (ui.js, main.js) hold a reference to the one state object for
+// the app's lifetime, so this mutates rather than replacing it.
+function resetState(state) {
+  const fresh = createDefaultState();
+  Object.keys(fresh).forEach((key) => {
+    state[key] = fresh[key];
+  });
+}
+
+const STORAGE_KEY = 'cubbies-generator:settings:v1';
+
+const NUMERIC_FIELDS = ['rows', 'columns', 't', 'tb', 'iw', 'ih', 'id', 'ow', 'oh', 'od', 'dd', 'rd', 'bw', 'precision'];
+const BOOLEAN_FIELDS = ['ddManual', 'rdManual'];
+const ENUM_FIELDS = { backboardMount: ['inset', 'outset'], colorMode: ['realistic', 'identify'] };
+const AXES = ['width', 'height', 'depth'];
+
+// Only the design parameters a user would want to save/share -- not the
+// derived errors/warnings, which validate() recomputes from these anyway.
+function serializeState(state) {
+  const out = { __version: 1 };
+  NUMERIC_FIELDS.forEach((key) => { out[key] = state[key]; });
+  BOOLEAN_FIELDS.forEach((key) => { out[key] = state[key]; });
+  Object.keys(ENUM_FIELDS).forEach((key) => { out[key] = state[key]; });
+  out.source = { ...state.source };
+  return out;
+}
+
+// Copies known, well-typed fields from a plain object (parsed JSON, quite
+// possibly hand-edited or from an older/newer version of this tool) onto an
+// existing state object. Unknown or malformed fields are silently skipped
+// rather than thrown on, so a partial or slightly-off file still loads what
+// it can instead of failing outright.
+function applySerializedState(state, data) {
+  if (!data || typeof data !== 'object') return;
+
+  NUMERIC_FIELDS.forEach((key) => {
+    if (Number.isFinite(data[key])) state[key] = data[key];
+  });
+  BOOLEAN_FIELDS.forEach((key) => {
+    if (typeof data[key] === 'boolean') state[key] = data[key];
+  });
+  Object.keys(ENUM_FIELDS).forEach((key) => {
+    if (ENUM_FIELDS[key].includes(data[key])) state[key] = data[key];
+  });
+  if (data.source && typeof data.source === 'object') {
+    AXES.forEach((axis) => {
+      const v = data.source[axis];
+      if (v === 'inner' || v === 'overall') state.source[axis] = v;
+    });
+  }
+}
+
+// localStorage can throw (private browsing, disabled storage, quota) --
+// none of these are worth surfacing to the user, saving/loading settings
+// is a nicety, not core functionality, so fail silently.
+function saveToStorage(state) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState(state)));
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearStorage() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+// Entry point for main.js: defaults, with whatever was saved last session
+// layered on top, if anything.
+function loadOrCreateState() {
+  const state = createDefaultState();
+  const stored = loadFromStorage();
+  if (stored) {
+    applySerializedState(state, stored);
+    recompute(state);
+  }
+  return state;
+}
+
 function recompute(state) {
   if (!state.ddManual) state.dd = state.t / 4;
   if (!state.rdManual) state.rd = state.t / 2;
@@ -113,6 +206,16 @@ function validate(state) {
 }
 
 window.Cubbies = window.Cubbies || {};
-window.Cubbies.state = { createDefaultState, recompute };
+window.Cubbies.state = {
+  createDefaultState,
+  recompute,
+  resetState,
+  loadOrCreateState,
+  serializeState,
+  applySerializedState,
+  saveToStorage,
+  loadFromStorage,
+  clearStorage,
+};
 
 })();

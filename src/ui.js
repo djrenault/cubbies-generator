@@ -18,6 +18,53 @@ const NUMERIC_FIELDS = {
   bw: {},
 };
 
+const CUTLIST_VISIBLE_KEY = 'cubbies-generator:cutlistVisible';
+
+function getCutlistVisible() {
+  try {
+    const v = localStorage.getItem(CUTLIST_VISIBLE_KEY);
+    return v === null ? true : v === '1';
+  } catch (e) {
+    return true;
+  }
+}
+
+function setCutlistVisible(visible) {
+  try {
+    localStorage.setItem(CUTLIST_VISIBLE_KEY, visible ? '1' : '0');
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function applyCutlistVisible(visible) {
+  document.getElementById('cutlist').hidden = !visible;
+  document.getElementById('cutlistToggle').textContent = visible ? 'Hide' : 'Show';
+}
+
+function downloadJSON(filename, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+let settingsStatusTimer = null;
+function showSettingsStatus(message, isError) {
+  const el = document.getElementById('settingsStatus');
+  el.textContent = message;
+  el.classList.toggle('error-text', !!isError);
+  clearTimeout(settingsStatusTimer);
+  settingsStatusTimer = setTimeout(() => {
+    el.textContent = '';
+  }, 4000);
+}
+
 function bindUI(state, update) {
   document.getElementById('rows').addEventListener('change', (e) => {
     const v = Math.round(parseFraction(e.target.value));
@@ -65,6 +112,43 @@ function bindUI(state, update) {
   });
 
   document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const data = Cubbies.state.serializeState(state);
+    downloadJSON(`cubbies-${state.rows}x${state.columns}.json`, data);
+    showSettingsStatus('Settings exported.');
+  });
+
+  const importFile = document.getElementById('importFile');
+  document.getElementById('importBtn').addEventListener('click', () => importFile.click());
+  importFile.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-importing the same file later
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      Cubbies.state.applySerializedState(state, data);
+      update();
+      showSettingsStatus('Settings imported.');
+    } catch (err) {
+      showSettingsStatus('Could not read that file — is it valid JSON exported from this tool?', true);
+    }
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    if (!confirm('Reset all settings to defaults? This clears your current design.')) return;
+    Cubbies.state.resetState(state);
+    Cubbies.state.clearStorage();
+    update();
+    showSettingsStatus('Settings reset to defaults.');
+  });
+
+  document.getElementById('cutlistToggle').addEventListener('click', () => {
+    const visible = document.getElementById('cutlist').hidden;
+    setCutlistVisible(visible);
+    applyCutlistVisible(visible);
+  });
+  applyCutlistVisible(getCutlistVisible());
 
   syncInputs(state);
 }
