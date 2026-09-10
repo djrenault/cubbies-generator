@@ -24,6 +24,20 @@ function collectCuts(piece) {
 // and rabbet subtracted out via CSG. Pieces with no joinery cuts (shelves,
 // backboard, or an end panel with nothing to dado) skip CSG entirely and
 // just return a plain box — cheaper, and there's nothing to subtract.
+// Adjacent cuts on the same piece often share a boundary exactly (e.g. a
+// divider dado and the back rabbet on an inset top/bottom panel both start
+// at the panel's inside face) -- with several such cuts chained together,
+// three-bvh-csg's mesh-based CSG can hit exactly-coplanar faces and throw
+// ("Cannot read properties of null (reading 'dot')"), reproducible with
+// specific dd/rd/bw combinations especially on wider grids (more divider
+// dados chained = more chances to line up). Padding every cut very
+// slightly larger than its nominal size breaks that exact coincidence.
+// EPS is two orders of magnitude below any precision a woodworker or this
+// tool's 1/32"-finest display cares about, so it's not a visible or
+// dimensional change -- purely a CSG robustness workaround. Only affects
+// the 3D mesh; cutlist.js reads the unpadded nominal width/depth/at fields.
+const CSG_EPS = 0.001;
+
 function buildPieceMesh(piece, material, evaluator) {
   const size = piece.size;
   const baseGeometry = new THREE.BoxGeometry(
@@ -41,9 +55,9 @@ function buildPieceMesh(piece, material, evaluator) {
   let result = base;
   cuts.forEach((cut) => {
     const cutGeometry = new THREE.BoxGeometry(
-      Math.max(cut.size.x, 0.001),
-      Math.max(cut.size.y, 0.001),
-      Math.max(cut.size.z, 0.001)
+      Math.max(cut.size.x + 2 * CSG_EPS, 0.001),
+      Math.max(cut.size.y + 2 * CSG_EPS, 0.001),
+      Math.max(cut.size.z + 2 * CSG_EPS, 0.001)
     );
     const cutBrush = new Brush(cutGeometry, material);
     cutBrush.position.set(

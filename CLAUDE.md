@@ -244,6 +244,22 @@ Requirements:
   alongside its text description; `viewer3d.js` subtracts them from the
   piece's box with `three-bvh-csg`. Pieces with no cuts (shelves, the
   backboard) skip CSG and render as plain boxes.
+- **Every cut is padded ~0.001" larger than nominal before it's subtracted**
+  (`CSG_EPS` in `viewer3d.js`, applied only to the mesh geometry — the cut
+  list still reports the exact nominal width/depth/at values from
+  `geometry.js`, untouched). This isn't cosmetic: several cuts on the same
+  piece often share a boundary exactly by design (e.g. inset mode's back
+  rabbet and a divider dado both start flush at the panel's inside face),
+  and three-bvh-csg's mesh-based CSG can hit exactly-coplanar faces during
+  a chain of subtractions and throw (`Cannot read properties of null
+  (reading 'dot')`) — reproduced concretely with `columns=4`+ in inset
+  mode at specific `rd`/`dd` values (small `rd` in particular), verified
+  fixed by the padding across a fuzz sweep of ~1700 grid/joinery
+  combinations with zero failures. If a similar crash resurfaces at some
+  future combination of parameters, first suspect this same class of
+  issue (another exact-coplanarity case) before assuming a logic bug in
+  `geometry.js`'s cut positions — check whether bumping `CSG_EPS` up
+  resolves it before re-deriving the joinery math.
 - Nice-to-have, not required for v1: click a piece to highlight it and
   scroll/highlight the matching cut-list row; an exploded-view slider.
 
