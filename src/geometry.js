@@ -89,7 +89,13 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
 // End panel features + cuts. `insideAtMaxX` is true for the left end panel
 // (its inside face, toward the case interior, is at local x=size.x=t) and
 // false for the right end panel (inside face at local x=0).
-function endFeatures({ t, dd, tb, bw, panelDepth, endHeight, rowGaps, insideAtMaxX, backboardMount }) {
+//
+// The panel's own length is extended by `rd` at each end (see
+// computePieces) so its tongues actually fill the rabbet pockets cut into
+// the top/bottom panels — its local y=0 is therefore `rd` *below* the old
+// "clear height" origin, so every y-coordinate here is shifted by +rd to
+// land in the same global position as before.
+function endFeatures({ t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps, insideAtMaxX, backboardMount }) {
   const cutX = (depth) => (insideAtMaxX ? t - depth : 0);
   const features = [];
 
@@ -101,7 +107,7 @@ function endFeatures({ t, dd, tb, bw, panelDepth, endHeight, rowGaps, insideAtMa
       depth: dd,
       at: g.start,
       from: 'bottom edge',
-      cut: { pos: { x: cutX(dd), y: g.start, z: 0 }, size: { x: dd, y: t, z: panelDepth } },
+      cut: { pos: { x: cutX(dd), y: g.start + rd, z: 0 }, size: { x: dd, y: t, z: panelDepth } },
     });
   });
 
@@ -111,7 +117,7 @@ function endFeatures({ t, dd, tb, bw, panelDepth, endHeight, rowGaps, insideAtMa
       label: 'back rabbet (receives backboard)',
       width: bw,
       depth: tb,
-      cut: { pos: { x: cutX(tb), y: 0, z: panelDepth - bw }, size: { x: tb, y: endHeight, z: bw } },
+      cut: { pos: { x: cutX(tb), y: rd, z: panelDepth - bw }, size: { x: tb, y: endHeight, z: bw } },
     });
   }
 
@@ -121,6 +127,10 @@ function endFeatures({ t, dd, tb, bw, panelDepth, endHeight, rowGaps, insideAtMa
 // Internal divider features + cuts: dados on both faces at each shelf row
 // boundary. The top/bottom-edge "received into a dado" notes are text-only
 // — that groove is modeled on the top/bottom panel, not the divider itself.
+//
+// Like the end panel, the divider's own length is extended by `dd` at each
+// end so its tongues fill the top/bottom panel's divider dados, so every
+// y-coordinate here is shifted by +dd (see computePieces).
 function dividerFeatures({ t, dd, id, rowGaps }) {
   const features = [];
 
@@ -133,8 +143,8 @@ function dividerFeatures({ t, dd, id, rowGaps }) {
       at: g.start,
       from: 'bottom edge',
       cut: [
-        { pos: { x: 0, y: g.start, z: 0 }, size: { x: dd, y: t, z: id } },
-        { pos: { x: t - dd, y: g.start, z: 0 }, size: { x: dd, y: t, z: id } },
+        { pos: { x: 0, y: g.start + dd, z: 0 }, size: { x: dd, y: t, z: id } },
+        { pos: { x: t - dd, y: g.start + dd, z: 0 }, size: { x: dd, y: t, z: id } },
       ],
     });
   });
@@ -182,30 +192,36 @@ function computePieces(state) {
     features: topBottomFeatures({ ...featureArgs, insideAtY0: false }),
   });
 
-  // End panels
-  const endArgs = { t, dd, tb, bw, panelDepth, endHeight, rowGaps: rowLayout.gaps, backboardMount };
+  // End panels — length extended by rd at each end so the panel's own
+  // material actually fills the rabbet pocket cut into the top/bottom
+  // panels, instead of stopping flush at the old shoulder and leaving that
+  // pocket empty.
+  const endLength = endHeight + 2 * rd;
+  const endArgs = { t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps: rowLayout.gaps, backboardMount };
   add({
     type: 'end',
     label: 'End Panel — Left',
-    size: { x: t, y: endHeight, z: panelDepth },
-    pos: { x: 0, y: t, z: 0 },
+    size: { x: t, y: endLength, z: panelDepth },
+    pos: { x: 0, y: t - rd, z: 0 },
     features: endFeatures({ ...endArgs, insideAtMaxX: true }),
   });
   add({
     type: 'end',
     label: 'End Panel — Right',
-    size: { x: t, y: endHeight, z: panelDepth },
-    pos: { x: OW - t, y: t, z: 0 },
+    size: { x: t, y: endLength, z: panelDepth },
+    pos: { x: OW - t, y: t - rd, z: 0 },
     features: endFeatures({ ...endArgs, insideAtMaxX: false }),
   });
 
-  // Internal vertical dividers
+  // Internal vertical dividers — same idea, extended by dd at each end to
+  // fill the top/bottom panel's divider dado instead of stopping short of it.
+  const dividerLength = endHeight + 2 * dd;
   colLayout.gaps.forEach((g, i) => {
     add({
       type: 'divider',
       label: `Internal Divider ${i + 1}`,
-      size: { x: t, y: endHeight, z: id },
-      pos: { x: t + g.start, y: t, z: 0 },
+      size: { x: t, y: dividerLength, z: id },
+      pos: { x: t + g.start, y: t - dd, z: 0 },
       features: dividerFeatures({ t, dd, id, rowGaps: rowLayout.gaps }),
     });
   });

@@ -123,24 +123,34 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
    - **Inset mount only:** rabbet along the back edge for the backboard:
      `width = bw`, `depth = tb`, running the full width `OW`.
 
-2. **End panels** (left, right) — qty 2. `length = OH - 2*t`,
-   `width = panelDepth`, `thickness = t`.
+2. **End panels** (left, right) — qty 2. `length = (OH - 2*t) + 2*rd`,
+   `width = panelDepth`, `thickness = t`. The `+ 2*rd` matters: the panel's
+   own material has to actually reach up into the rabbet pocket cut into
+   the top/bottom panel (see item 1) and fill it — stopping flush at the
+   old `OH - 2*t` shoulder leaves that pocket empty, a visible gap where
+   the corner should be solid. Positioned starting `rd` below the old
+   "clear height" origin (`pos.y = t - rd`), so its tongues land exactly
+   in the pockets rather than poking past them.
    - Dado on the inner face at each internal row boundary (`R - 1` of
      them) for shelves: `width = t`, `depth = dd`.
    - **Inset mount only:** rabbet along the back edge for the backboard:
      `width = bw`, `depth = tb`.
 
-3. **Internal vertical dividers** — qty `C - 1`. Same length as end panels
-   (`OH - 2*t`), `width = id` always, regardless of mount mode (see
-   Backboard, below, for why this doesn't need a special case),
-   `thickness = t`.
+3. **Internal vertical dividers** — qty `C - 1`. `length = (OH - 2*t) + 2*dd`
+   (same idea as the end panel's `+ 2*rd`, but filling a *dado* pocket
+   instead of a rabbet, so it's sized by `dd` — end panels and dividers are
+   different lengths whenever `rd != dd`, which is the default), `width = id`
+   always, regardless of mount mode (see Backboard, below, for why this
+   doesn't need a special case), `thickness = t`. Positioned starting `dd`
+   below the old origin (`pos.y = t - dd`), same reasoning as the end panel.
    - Dado on **both** faces at each row boundary (`R - 1` positions) for
      shelves, depth `dd` each (see the dado depth constraint above).
    - Dado on the top and bottom edges, received into matching dados cut
      into the top/bottom panels at this divider's x-position (`width = t`,
      `depth = dd`) — this is how a continuous internal divider attaches to
      the top/bottom, since only the two *end* pieces get the corner rabbet
-     treatment described in the prompt.
+     treatment described in the prompt. This is the dado whose pocket the
+     divider's own `+ 2*dd` length is reaching into.
 
 4. **Shelves** — qty `C * (R - 1)`. `length = iw + 2*dd` (reaches fully
    into the dado on each side), `width = id`, `thickness = t`.
@@ -179,7 +189,9 @@ inside face of the bottom panel.
 OW = 3*0.75 + 2*12       = 26.25"   (26 1/4")
 OH = 4*0.75 + 3*10       = 33"
 OD = 11 + 0.25           = 11.25"  (11 1/4")
-End/divider length        = 33 - 1.5 = 31.5"  (31 1/2")
+Clear height (OH - 2*t)    = 33 - 1.5 = 31.5"
+End panel length           = 31.5 + 2*0.375 = 32.25"  (32 1/4")
+Divider length              = 31.5 + 2*0.1875 = 31.875"  (31 7/8")
 Shelf length               = 12 + 2*0.1875 = 12.375"  (12 3/8")
 Shelf count                = 2 * 2 = 4
 Vertical count              = 3  (2 end + 1 internal divider)
