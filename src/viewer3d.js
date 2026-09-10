@@ -1,7 +1,67 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
 
 const GOLDEN_ANGLE = 137.508;
+
+// Flattens a piece's features into a plain list of cut boxes (each
+// feature's `cut` is either one box or an array of boxes — see
+// geometry.js). Features with no `cut` (text-only notes) are skipped.
+function collectCuts(piece) {
+  const cuts = [];
+  (piece.features || []).forEach((f) => {
+    if (!f.cut) return;
+    (Array.isArray(f.cut) ? f.cut : [f.cut]).forEach((c) => cuts.push(c));
+  });
+  return cuts;
+}
+
+// Builds the actual grooved mesh for a piece: a solid box with each dado
+// and rabbet subtracted out via CSG. Pieces with no joinery cuts (shelves,
+// backboard, or an end panel with nothing to dado) skip CSG entirely and
+// just return a plain box — cheaper, and there's nothing to subtract.
+function buildPieceMesh(piece, material, evaluator) {
+  const size = piece.size;
+  const baseGeometry = new THREE.BoxGeometry(
+    Math.max(size.x, 0.001),
+    Math.max(size.y, 0.001),
+    Math.max(size.z, 0.001)
+  );
+  const base = new Brush(baseGeometry, material);
+  base.position.set(piece.pos.x + size.x / 2, piece.pos.y + size.y / 2, piece.pos.z + size.z / 2);
+  base.updateMatrixWorld();
+
+  const cuts = collectCuts(piece);
+  if (cuts.length === 0) return base;
+
+  let result = base;
+  cuts.forEach((cut) => {
+    const cutGeometry = new THREE.BoxGeometry(
+      Math.max(cut.size.x, 0.001),
+      Math.max(cut.size.y, 0.001),
+      Math.max(cut.size.z, 0.001)
+    );
+    const cutBrush = new Brush(cutGeometry, material);
+    cutBrush.position.set(
+      piece.pos.x + cut.pos.x + cut.size.x / 2,
+      piece.pos.y + cut.pos.y + cut.size.y / 2,
+      piece.pos.z + cut.pos.z + cut.size.z / 2
+    );
+    cutBrush.updateMatrixWorld();
+    result = evaluator.evaluate(result, cutBrush, SUBTRACTION);
+  });
+
+  return result;
+}
+
+function disposeGroup(group) {
+  group.traverse((obj) => {
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach((m) => m.dispose());
+    }
+  });
+}
 
 function makeWoodTexture() {
   const canvas = document.createElement('canvas');
@@ -60,6 +120,7 @@ export function createViewer(container) {
   scene.add(dirLight);
 
   const woodTexture = makeWoodTexture();
+  const evaluator = new Evaluator();
 
   let group = new THREE.Group();
   scene.add(group);
@@ -97,23 +158,14 @@ export function createViewer(container) {
 
   function render(pieces, colorMode) {
     scene.remove(group);
+    disposeGroup(group);
     group = new THREE.Group();
 
     const bbox = new THREE.Box3();
 
     pieces.forEach((piece, index) => {
-      const geometry = new THREE.BoxGeometry(
-        Math.max(piece.size.x, 0.001),
-        Math.max(piece.size.y, 0.001),
-        Math.max(piece.size.z, 0.001)
-      );
       const material = materialFor(piece, index, colorMode);
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(
-        piece.pos.x + piece.size.x / 2,
-        piece.pos.y + piece.size.y / 2,
-        piece.pos.z + piece.size.z / 2
-      );
+      const mesh = buildPieceMesh(piece, material, evaluator);
       mesh.userData.pieceId = piece.id;
       group.add(mesh);
       bbox.expandByObject(mesh);

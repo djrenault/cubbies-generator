@@ -224,6 +224,14 @@ Requirements:
 - Model is rebuilt (or incrementally updated) whenever any input changes —
   keep this fast; a plywood box has few enough parts that a full rebuild
   per change is fine, no need for incremental diffing.
+- Dados and rabbets are carved into the actual mesh (not just noted in the
+  cut list) via CSG box subtraction — every joinery cut in this design is
+  an axis-aligned rectangular notch, which is the easy case for CSG, so
+  this doesn't need general-purpose boolean geometry. `geometry.js` emits
+  each cut as a `{ pos, size }` box (or array of boxes) local to the piece
+  alongside its text description; `viewer3d.js` subtracts them from the
+  piece's box with `three-bvh-csg`. Pieces with no cuts (shelves, the
+  backboard) skip CSG and render as plain boxes.
 - Nice-to-have, not required for v1: click a piece to highlight it and
   scroll/highlight the matching cut-list row; an exploded-view slider.
 
@@ -251,7 +259,10 @@ computer with no internet access can still open `index.html`), and sidesteps
 CDN reachability being environment-dependent. Update the vendored copy by
 fetching a pinned version's `build/three.module.min.js` and
 `examples/jsm/controls/OrbitControls.js` from the `three` npm package (do
-not hand-edit them).
+not hand-edit them). Grooved joinery in the viewer (see 3D Viewer, below)
+uses `three-bvh-csg` for box-subtraction CSG, which itself depends on
+`three-mesh-bvh` — both vendored the same way, from their npm packages'
+`build/index.module.js`.
 
 ```
 index.html
@@ -259,6 +270,12 @@ vendor/
   three/
     build/three.module.min.js
     examples/jsm/controls/OrbitControls.js
+    LICENSE
+  three-bvh-csg/
+    index.module.js
+    LICENSE
+  three-mesh-bvh/
+    index.module.js
     LICENSE
 src/
   main.js       entry point, wires state + ui + viewer3d + cutlist together
