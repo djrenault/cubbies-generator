@@ -232,10 +232,13 @@ fieldset select {
 }
 
 .piece-svg {
+  /* Rendered at its own intrinsic pixel size (set via width/height
+     attributes in piecediagrams.js, at a fixed px-per-inch) rather than
+     stretched/shrunk to a shared CSS width -- see PX_PER_IN in that file
+     for why a shared max-width made large pieces' text illegible. A
+     diagram wider than its column scrolls horizontally within
+     #piecediagrams (already overflow:auto) instead of shrinking. */
   display: block;
-  width: 100%;
-  max-width: 700px;
-  height: auto;
   background: #faf8f4;
   border: 1px solid var(--border);
   border-radius: 4px;

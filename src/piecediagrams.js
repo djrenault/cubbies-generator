@@ -33,12 +33,33 @@ const { pieceFootprint, PIECE_LABELS, featureFaceRect } = Cubbies.geometry;
 const { el, fitLabels } = Cubbies.svgutil;
 
 const EPS = 1e-6;
-const PAD = 0.3; // inches of blank margin around the whole diagram
-const TOP_MARGIN = 0.55; // room for the overall-length dimension line
-const LEFT_MARGIN = 0.65; // room for the overall-width dimension line
-const LANE = 0.42; // height/width of one stacked internal-dimension lane
-const ARROW = 0.08;
-const DIM_FONT_SIZE = 0.16;
+
+// Every piece diagram renders at this fixed scale (its SVG gets an actual
+// width/height in px, not just a viewBox) instead of being squeezed to a
+// shared CSS max-width like sheet diagrams are. Sheet diagrams all share
+// one physical size (the user's sheetW x sheetH), so a shared max-width
+// is fine there -- but pieces range from an ~11" shelf to a 90"+ panel on
+// a wide grid, and forcing all of them into the same on-screen box made
+// the large ones' text and stroke widths shrink to illegibility even
+// though the SVG itself was exactly as detailed as the small piece's
+// (reported: "on large pieces, the dimension text is extremely small").
+// A diagram wider than its column now scrolls horizontally within
+// #piecediagrams (already overflow:auto) instead of shrinking.
+const PX_PER_IN = 16;
+function px(n) {
+  return n / PX_PER_IN;
+}
+
+const PAD = px(16); // blank margin around the whole diagram
+const TOP_MARGIN = px(34); // room for the overall-length dimension line
+const LEFT_MARGIN = px(42); // room for the overall-width dimension line
+const LANE = px(26); // height/width of one stacked internal-dimension lane
+const LANE_GAP = px(3); // small gap between stacked lanes and their extension ticks
+const ARROW = px(7);
+const DIM_FONT_SIZE = px(12);
+const BAND_FONT_MIN = px(11);
+const DIM_LINE_GAP = px(16); // gap from the piece edge to its overall dimension line
+const TEXT_GAP = px(3); // gap between a dimension line and its text label
 
 const GROUP_ORDER = ['top-bottom', 'end', 'divider', 'shelf', 'backboard'];
 
@@ -101,7 +122,7 @@ function hDim(parent, x1, x2, y, label) {
   el('path', { d: `M${x2},${y} L${x2 - ARROW},${y - ARROW / 2} L${x2 - ARROW},${y + ARROW / 2} Z`, class: 'dim-arrow' }, g);
   const text = el(
     'text',
-    { x: (x1 + x2) / 2, y: y - 0.07, 'text-anchor': 'middle', 'font-size': DIM_FONT_SIZE, class: 'dim-text' },
+    { x: (x1 + x2) / 2, y: y - TEXT_GAP, 'text-anchor': 'middle', 'font-size': DIM_FONT_SIZE, class: 'dim-text' },
     g
   );
   text.textContent = label;
@@ -117,7 +138,7 @@ function vDim(parent, y1, y2, x, label) {
     'text',
     {
       x,
-      y: cy - 0.07,
+      y: cy - TEXT_GAP,
       'text-anchor': 'middle',
       'font-size': DIM_FONT_SIZE,
       class: 'dim-text',
@@ -161,8 +182,8 @@ function renderPieceSvg(piece, precision) {
   const vLaneBands = bands.filter((b) => b.vertical && !b.edgeFlush);
   const hLaneBands = bands.filter((b) => !b.vertical && !b.edgeFlush);
 
-  const bottomMargin = PAD + (vLaneBands.length ? vLaneBands.length * LANE + 0.15 : 0);
-  const rightMargin = PAD + (hLaneBands.length ? hLaneBands.length * LANE + 0.15 : 0);
+  const bottomMargin = PAD + (vLaneBands.length ? vLaneBands.length * LANE + LANE_GAP : 0);
+  const rightMargin = PAD + (hLaneBands.length ? hLaneBands.length * LANE + LANE_GAP : 0);
 
   const originX = LEFT_MARGIN;
   const originY = TOP_MARGIN;
@@ -171,13 +192,15 @@ function renderPieceSvg(piece, precision) {
 
   const svg = el('svg', {
     viewBox: `0 0 ${viewW} ${viewH}`,
+    width: viewW * PX_PER_IN,
+    height: viewH * PX_PER_IN,
     class: 'piece-svg',
     role: 'img',
     'aria-label': `${PIECE_LABELS[piece.type] || piece.type} diagram`,
   });
 
-  const px = (x) => originX + x;
-  const py = (y) => originY + y;
+  const toX = (x) => originX + x;
+  const toY = (y) => originY + y;
 
   el('rect', { x: originX, y: originY, width: length, height: width, class: 'piece-outline' }, svg);
 
@@ -187,8 +210,8 @@ function renderPieceSvg(piece, precision) {
     el(
       'rect',
       {
-        x: px(rect.x),
-        y: py(rect.y),
+        x: toX(rect.x),
+        y: toY(rect.y),
         width: rect.w,
         height: rect.h,
         class: feature.kind === 'rabbet' ? 'piece-cut-rabbet' : 'piece-cut-dado',
@@ -199,9 +222,9 @@ function renderPieceSvg(piece, precision) {
     el('title', {}, g).textContent = feature.label ? `${feature.label} — ${label}` : label;
 
     const rotate = rect.h > rect.w * 1.3;
-    const fontSize = Math.max(0.28, Math.min(rect.w, rect.h) * 0.22);
-    const cx = px(rect.x + rect.w / 2);
-    const cy = py(rect.y + rect.h / 2);
+    const fontSize = Math.max(BAND_FONT_MIN, Math.min(rect.w, rect.h) * 0.22);
+    const cx = toX(rect.x + rect.w / 2);
+    const cy = toY(rect.y + rect.h / 2);
     const textAttrs = {
       x: cx,
       y: cy,
@@ -217,14 +240,14 @@ function renderPieceSvg(piece, precision) {
   });
 
   // Overall length (top) and width (left) dimensions.
-  const lenY = originY - 0.25;
-  extLine(svg, originX, originY, originX, lenY - 0.08);
-  extLine(svg, originX + length, originY, originX + length, lenY - 0.08);
+  const lenY = originY - DIM_LINE_GAP;
+  extLine(svg, originX, originY, originX, lenY - LANE_GAP);
+  extLine(svg, originX + length, originY, originX + length, lenY - LANE_GAP);
   hDim(svg, originX, originX + length, lenY, formatFraction(length, precision));
 
-  const widX = originX - 0.25;
-  extLine(svg, originX, originY, widX - 0.08, originY);
-  extLine(svg, originX, originY + width, widX - 0.08, originY + width);
+  const widX = originX - DIM_LINE_GAP;
+  extLine(svg, originX, originY, widX - LANE_GAP, originY);
+  extLine(svg, originX, originY + width, widX - LANE_GAP, originY + width);
   vDim(svg, originY, originY + width, widX, formatFraction(width, precision));
 
   // Internal band position dimensions, stacked outward one lane per band
@@ -236,7 +259,7 @@ function renderPieceSvg(piece, precision) {
     vLaneBands.forEach((b, i) => {
       const laneY = laneBaseY + i * LANE + LANE / 2;
       const bx = originX + b.rect.x;
-      extLine(svg, bx, laneBaseY, bx, laneY + 0.08);
+      extLine(svg, bx, laneBaseY, bx, laneY + LANE_GAP);
       hDim(svg, originX, bx, laneY, formatFraction(b.rect.x, precision));
     });
   }
@@ -247,7 +270,7 @@ function renderPieceSvg(piece, precision) {
     hLaneBands.forEach((b, i) => {
       const laneX = laneBaseX + i * LANE + LANE / 2;
       const by = originY + b.rect.y;
-      extLine(svg, laneBaseX, by, laneX + 0.08, by);
+      extLine(svg, laneBaseX, by, laneX + LANE_GAP, by);
       vDim(svg, originY, by, laneX, formatFraction(b.rect.y, precision));
     });
   }

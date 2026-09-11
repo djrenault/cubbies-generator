@@ -11,7 +11,7 @@ Fully implemented and working. Open `index.html` directly — no server, no
 build step, no internet connection (see Tech Stack & Architecture, below,
 for exactly why that works). This file is no longer just a spec to build
 toward; it documents what's actually shipped, kept in sync with the code
-as it changed. That includes four real bugs found through use and fixed in
+as it changed. That includes real bugs found through use and fixed in
 place, each documented in the relevant section below rather than left only
 in git history, since the failure mode is exactly what's worth knowing
 before touching that code again:
@@ -28,6 +28,10 @@ before touching that code again:
 - A single click into a dimension field doesn't select its existing text,
   so typing a replacement corrupted it into something unparseable and the
   edit silently reverted — see Units, Fractions & Precision.
+- An inset backboard with `tb >= t` (e.g. both set to 3/4") silently
+  produced a broken model — the back corners looked visibly wrong in the
+  3D viewer, with no error shown — see Joinery Model & Geometry, item 5
+  (Backboard).
 
 Treat every formula and structural decision below as the source of truth
 for how the app actually behaves; if you change the code, update the
@@ -60,7 +64,7 @@ Cubby openings are flush with the front edges of the case.
 | Rows | `R` | integer ≥ 1 |
 | Columns | `C` | integer ≥ 1 |
 | Plywood thickness (case material) | `t` | verticals, shelves, top, bottom |
-| Backboard thickness | `tb` | independent field, can differ from `t` |
+| Backboard thickness | `tb` | independent field, can differ from `t`; constrained to `tb < t` in inset mount mode (see Joinery Model, item 5) |
 | Inner width per cubby | `iw` | uniform across the whole grid |
 | Inner height per cubby | `ih` | uniform across the whole grid |
 | Inner depth per cubby | `id` | uniform across the whole grid |
@@ -194,6 +198,23 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
      piece: in inset mode the backboard sits flush within `panelDepth`;
      in outset mode `panelDepth` is just `id` and the backboard adds `tb`
      behind it. Same total, different split.
+   - **Inset backboard requires `tb < t`.** The back rabbet on the top,
+     bottom, and end panels is cut to a *depth* of `tb`, into panels whose
+     own thickness is `t` — the un-rabbeted material left in front of that
+     cut (`t - tb`) is the rabbet's shoulder, the solid wall that actually
+     holds the backboard in place. If `tb >= t`, that shoulder is zero or
+     negative: the "rabbet" removes the panel's *entire* thickness along
+     the whole back edge instead, on every piece that carries this
+     feature (top, bottom, both ends) — not a local defect but a
+     systemic one, since it's every corner where the back comes together.
+     Found exactly this way: a user-supplied design with `t = tb = 3/4"`
+     rendered a visibly broken 3D model at the back corners with no error
+     shown, because nothing validated `tb` against `t` for inset mode.
+     `state.js`'s `validate()` now errors (blocking the render, same as
+     the dado-depth-vs-thickness check below) when
+     `backboardMount === 'inset' && tb >= t`. Outset mode has no such
+     constraint — it doesn't rabbet the backboard into anything, so `tb`
+     can be any positive value regardless of `t`.
 
 **Divider x-positions** (left inner face = 0, +x toward the right end):
 divider `k` (1-indexed, `k = 1..C-1`) sits with its left face at
@@ -398,6 +419,31 @@ Requirements:
 - Print stylesheet: same pattern as Sheet-Goods Nesting — one piece
   diagram per printed page (`break-before: page` on `.piece-diagram`),
   forced fully visible and unscrolled regardless of the on-screen toggle.
+- **Each diagram renders at a fixed `PX_PER_IN` (16px/inch), via explicit
+  `width`/`height` pixel attributes on the `<svg>` — not a shared CSS
+  `max-width` like sheet diagrams use.** Sheet diagrams all share one
+  physical size (the user's `sheetW`/`sheetH`), so squeezing every sheet
+  into the same on-screen box is fine there. Piece diagrams don't share a
+  size — pieces range from an ~11" shelf to a 90"+ panel on a wide grid —
+  so an earlier version that also used a shared `max-width: 700px` made
+  the browser scale down a large piece's *entire* SVG (text, stroke
+  widths, everything) to fit, while a small piece's SVG barely scaled at
+  all: reported as "on large pieces, the dimension text is extremely
+  small," and confirmed by measuring rendered `dim-text` height, which
+  varied from ~2px on a 55"+ top panel down to ~8px on a 12" shelf at the
+  old shared width. Every layout constant in `piecediagrams.js` (font
+  sizes, margins, arrow size, lane spacing) is now defined as a target
+  pixel size divided by `PX_PER_IN`, so they resolve to the same rendered
+  pixel size on every diagram regardless of the piece's physical size —
+  verified by measuring `dim-text` height across a 90"+ panel and an
+  11" shelf and getting the same value. A diagram wider than its column
+  now scrolls horizontally within `#piecediagrams` (already
+  `overflow: auto`) instead of shrinking; the print stylesheet's own
+  `max-width: 100%` (plus a matching `height: auto`, since this SVG's
+  size comes from attributes rather than sheet-svg's CSS width/height)
+  still scales a diagram down to fit a printed page, which is the one
+  place shrinking to fit *is* correct, since the page size is genuinely
+  fixed.
 
 ## Sheet-Goods Nesting
 

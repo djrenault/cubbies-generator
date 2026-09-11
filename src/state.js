@@ -207,6 +207,12 @@ function validate(state) {
     if (state.rd >= state.t) {
       warnings.push('Rabbet depth is at least the full plywood thickness — this would cut through the panel.');
     }
+
+    if (state.backboardMount === 'inset' && state.tb >= state.t) {
+      errors.push(
+        'Backboard thickness must be less than the case plywood thickness for an inset backboard — the back rabbet is cut to a depth of the backboard thickness, so at this size it would remove the top/bottom/end panels\' full thickness along the entire back edge, leaving no shoulder to hold the backboard. Reduce backboard thickness, increase case thickness, or switch to outset mount.'
+      );
+    }
   }
 
   state.errors = errors;

@@ -68,4 +68,14 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+
+  /* piece-svg's on-screen size comes from explicit width/height attributes
+     (see PX_PER_IN in piecediagrams.js), not CSS width/height like
+     sheet-svg's -- so when max-width:100% above shrinks a diagram wider
+     than the page, height needs its own override to scale down with it
+     and keep the aspect ratio, rather than staying pinned to the
+     attribute's pixel value and distorting. */
+  .piece-svg {
+    height: auto;
+  }
 }
