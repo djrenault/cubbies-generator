@@ -28,9 +28,18 @@ before touching that code again:
 - A single click into a dimension field doesn't select its existing text,
   so typing a replacement corrupted it into something unparseable and the
   edit silently reverted — see Units, Fractions & Precision.
-- An inset backboard with `tb >= t` (e.g. both set to 3/4") silently
-  produced a broken model — the back corners looked visibly wrong in the
-  3D viewer, with no error shown — see Joinery Model & Geometry, item 5
+- An inset backboard's back rabbet was cut to a depth of `tb` (backboard
+  thickness) instead of `rd` (the same corner-rabbet depth used
+  everywhere else in the case) — silently broken for `tb >= t` (no
+  shoulder left at all), but wrong in general: even a *valid* `tb < t`
+  left the rabbet's reach (`bw`) and depth mismatched from what the
+  backboard's edge actually needed, so the back corners looked wrong for
+  ordinary configurations too, not just the `tb >= t` edge case. A first
+  pass added a `tb < t` validation error, which stopped the broken
+  render but didn't fix the underlying model or let a user actually
+  build with backboard stock as thick as the case material, which was
+  the real ask. Fixed by decoupling the rabbet's depth-into-thickness
+  from `tb` entirely (now `rd`) — see Joinery Model & Geometry, item 5
   (Backboard).
 
 Treat every formula and structural decision below as the source of truth
@@ -64,7 +73,7 @@ Cubby openings are flush with the front edges of the case.
 | Rows | `R` | integer ≥ 1 |
 | Columns | `C` | integer ≥ 1 |
 | Plywood thickness (case material) | `t` | verticals, shelves, top, bottom |
-| Backboard thickness | `tb` | independent field, can differ from `t`; constrained to `tb < t` in inset mount mode (see Joinery Model, item 5) |
+| Backboard thickness | `tb` | independent field, can differ from `t` — including equal to or greater than it, even in inset mount mode (see Joinery Model, item 5) |
 | Inner width per cubby | `iw` | uniform across the whole grid |
 | Inner height per cubby | `ih` | uniform across the whole grid |
 | Inner depth per cubby | `id` | uniform across the whole grid |
@@ -72,9 +81,9 @@ Cubby openings are flush with the front edges of the case.
 | Overall height | `OH` | derived ⇄ editable, see below |
 | Overall depth | `OD` | derived ⇄ editable, see below |
 | Dado depth | `dd` | default `t / 4`; constrained so `2*dd < t` (see Joinery Model) |
-| Rabbet depth (corners) | `rd` | default `t / 2` |
+| Rabbet depth (corners) | `rd` | default `t / 2`; inset mount also uses this as the back rabbet's depth (see Joinery Model, item 5) |
 | Backboard mount mode | — | `inset` \| `outset` toggle, default **outset** |
-| Backboard rabbet width | `bw` | inset mount only — how far the back rabbet reaches toward the front; default `3/8"` |
+| Backboard rabbet width | `bw` | inset mount only — how far the back rabbet reaches toward the front; default `3/8"`; constrained to `bw ≥ tb` (see Joinery Model, item 5) |
 
 **Assumption:** cell size is uniform for the whole grid (one `iw`/`ih`/`id`,
 not per-row or per-column). This matches "the inner dimensions of each
@@ -147,7 +156,8 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
    - Dado on the inside face for each internal vertical divider:
      `width = t`, `depth = dd`, at each divider's x-position (see below).
    - **Inset mount only:** rabbet along the back edge for the backboard:
-     `width = bw`, `depth = tb`, running the full width `OW`.
+     `width = bw`, `depth = rd`, running the full width `OW`. Depth is
+     `rd`, not `tb` — see item 5 for why.
 
 2. **End panels** (left, right) — qty 2. `length = (OH - 2*t) + 2*rd`,
    `width = panelDepth`, `thickness = t`. The `+ 2*rd` matters: the panel's
@@ -160,7 +170,7 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
    - Dado on the inner face at each internal row boundary (`R - 1` of
      them) for shelves: `width = t`, `depth = dd`.
    - **Inset mount only:** rabbet along the back edge for the backboard:
-     `width = bw`, `depth = tb`.
+     `width = bw`, `depth = rd` (see item 5).
 
 3. **Internal vertical dividers** — qty `C - 1`. `length = (OH - 2*t) + 2*dd`
    (same idea as the end panel's `+ 2*rd`, but filling a *dado* pocket
@@ -191,30 +201,63 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
    - **Inset:** captured in a rabbet run around the inside back edge of
      the top, bottom, and end panels (see `panelDepth` and the rabbet
      features on those pieces above), flush with their back face.
-     `width = (OW - 2*t) + 2*bw`, `height = (OH - 2*t) + 2*bw`,
-     `thickness = tb`. `bw` only matters in this mode.
+     `width = (OW - 2*t) + 2*rd`, `height = (OH - 2*t) + 2*rd`,
+     `thickness = tb`. Extended by `rd` at each edge — same
+     tongue-fills-pocket pattern as the end panels/dividers above (items
+     2-3) — to reach into the back rabbet pocket, which is now also `rd`
+     deep (see below). `bw` still matters in this mode too, just for a
+     different axis (see below).
    - Either way, `OD = id + tb` (see Bidirectional Dimension Linking)
      still gives the correct total front-to-back depth of the finished
      piece: in inset mode the backboard sits flush within `panelDepth`;
      in outset mode `panelDepth` is just `id` and the backboard adds `tb`
      behind it. Same total, different split.
-   - **Inset backboard requires `tb < t`.** The back rabbet on the top,
-     bottom, and end panels is cut to a *depth* of `tb`, into panels whose
-     own thickness is `t` — the un-rabbeted material left in front of that
-     cut (`t - tb`) is the rabbet's shoulder, the solid wall that actually
-     holds the backboard in place. If `tb >= t`, that shoulder is zero or
-     negative: the "rabbet" removes the panel's *entire* thickness along
-     the whole back edge instead, on every piece that carries this
-     feature (top, bottom, both ends) — not a local defect but a
-     systemic one, since it's every corner where the back comes together.
-     Found exactly this way: a user-supplied design with `t = tb = 3/4"`
-     rendered a visibly broken 3D model at the back corners with no error
-     shown, because nothing validated `tb` against `t` for inset mode.
-     `state.js`'s `validate()` now errors (blocking the render, same as
-     the dado-depth-vs-thickness check below) when
-     `backboardMount === 'inset' && tb >= t`. Outset mode has no such
-     constraint — it doesn't rabbet the backboard into anything, so `tb`
-     can be any positive value regardless of `t`.
+   - **The back rabbet's depth is `rd`, not `tb` — deliberately
+     decoupled from backboard thickness.** A rabbet has two independent
+     dimensions: `bw` is how far forward (in depth, Z) it reaches from
+     the back edge; the *depth* is how far it cuts *into the panel's own
+     cross-sectional thickness* (Y for top/bottom, X for end panels) —
+     the same role `rd` already plays for the corner rabbet between end
+     panels and top/bottom. An earlier version used `depth = tb` here
+     instead, reasoning that the pocket just needs to be as deep as the
+     board is thick — but that conflates "how deep the pocket needs to
+     reach" with "how thick the board is," which aren't the same
+     question. The un-rabbeted material left in front of the cut
+     (`t - rd`) is the shoulder that holds the backboard captured; using
+     `tb` for that depth meant the shoulder's existence depended on
+     backboard thickness at all, which breaks outright for `tb >= t`
+     (zero or negative shoulder) and, more subtly, was *also* wrong for
+     smaller, individually-valid values of `tb`, `bw`, and `rd` — the
+     backboard's own tongue extension (now fixed above) and the rabbet's
+     depth need to agree with each other, and tying one of them to `tb`
+     while the other used a different value (`bw`) meant they generally
+     didn't. Found via a user report of a `t = tb = 3/4"` inset design
+     with visibly broken back corners; a first fix just added a
+     `tb < t` validation error, which stopped the broken render but
+     didn't address the mismatch for valid configs either, and blocked
+     exactly the case the user actually wanted (a backboard as thick as
+     the case material). Reusing `rd` fixes both: the shoulder (`t - rd`)
+     no longer depends on `tb` at all, so `tb` can be any positive value,
+     including equal to or greater than `t`.
+   - **This does mean `bw` needs its own relationship to `tb`.** The
+     rabbet's Z-range is `[panelDepth - bw, panelDepth]`; the backboard
+     (flush with the back, per above) occupies
+     `[panelDepth - tb, panelDepth]`. For the backboard's full thickness
+     to land inside the rabbeted region — not collide with solid,
+     un-rabbeted panel material in front of it — the rabbet has to reach
+     forward *at least* as far as the board is thick: **`bw >= tb`**.
+     `state.js`'s `validate()` errors (blocking the render, same as the
+     dado-depth check below) when `backboardMount === 'inset' && bw < tb`,
+     naming both values in the message. The default `bw = 3/8"` already
+     exceeds the default `tb = 1/4"`, so this doesn't affect the
+     out-of-the-box config — it only comes up when a user increases `tb`
+     without also increasing `bw` to match (e.g. a 3/4" backboard needs
+     `bw >= 3/4"` too, not just `t >= tb`). Verified with a fuzz sweep of
+     `rows × columns × t × tb × bw` (768 combinations, `tb` up to `1.25"`
+     against `t` up to `1"`, including `tb > t`) rendering every
+     validation-passing combination through the actual CSG pipeline —
+     480 rendered, zero CSG failures, and a separate shoulder/reach check
+     confirmed positive on all of them.
 
 **Divider x-positions** (left inner face = 0, +x toward the right end):
 divider `k` (1-indexed, `k = 1..C-1`) sits with its left face at
@@ -243,7 +286,21 @@ Divider dado web check     = t - 2*dd = 0.75 - 0.375 = 0.375"  (3/8" remaining, 
 Outset backboard (default): panelDepth = id = 11"; backboard = OW x OH
                              = 26.25" x 33"  (26 1/4" x 33")
 Inset backboard:            panelDepth = id + tb = 11.25"; backboard
-                             = 25.5" x 32.25"  (25 1/2" x 32 1/4")
+                             = (OW-2t+2*rd) x (OH-2t+2*rd) = 25.5" x 32.25"
+                             (25 1/2" x 32 1/4") -- rd (3/8"), not tb
+                             (1/4"), sizes this extension; they just
+                             happen to coincide with bw here since all
+                             three default to a value derived from the
+                             same t = 3/4"
+Back rabbet depth check:    bw (3/8") >= tb (1/4"): OK, default is valid
+
+Thick inset backboard (tb = t, the case not previously documented as
+working -- see Joinery Model, item 5): R=3, C=4, t=tb=3/4", bw=3/4"
+(bumped to match tb -- the default 3/8" would fail the bw >= tb check)
+                             Back rabbet shoulder = t - rd = 0.75-0.375
+                             = 0.375" (still safe -- rd is untouched by
+                             raising tb)
+                             Back rabbet reach = bw = 0.75" >= tb = 0.75": OK
 ```
 
 ## Units, Fractions & Precision

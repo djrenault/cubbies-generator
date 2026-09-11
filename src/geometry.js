@@ -74,12 +74,20 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
   });
 
   if (backboardMount === 'inset') {
+    // Depth is `rd`, not `tb` -- the un-rabbeted material left in front of
+    // this cut (`t - rd`) is the rabbet's shoulder, same role `rd` already
+    // plays for the corner rabbet above. Using `tb` here used to mean the
+    // shoulder depended on backboard thickness at all, which breaks for
+    // `tb >= t` (see CLAUDE.md "Joinery Model & Geometry", item 5) and,
+    // even for a valid `tb`, doesn't match how far the backboard's edge
+    // actually needs to reach into this pocket (fixed together with that
+    // extension below, in computePieces).
     features.push({
       kind: 'rabbet',
       label: 'back rabbet (receives backboard)',
       width: bw,
-      depth: tb,
-      cut: { pos: { x: 0, y: cutY(tb), z: panelDepth - bw }, size: { x: OW, y: tb, z: bw } },
+      depth: rd,
+      cut: { pos: { x: 0, y: cutY(rd), z: panelDepth - bw }, size: { x: OW, y: rd, z: bw } },
     });
   }
 
@@ -112,12 +120,16 @@ function endFeatures({ t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps, inside
   });
 
   if (backboardMount === 'inset') {
+    // See the matching comment in topBottomFeatures: depth is `rd`, not
+    // `tb`. (The `y: rd` position offset here is the panel's own
+    // clear-height-origin shift, unrelated to the depth-into-thickness
+    // value -- both simply happen to use the same `rd` parameter.)
     features.push({
       kind: 'rabbet',
       label: 'back rabbet (receives backboard)',
       width: bw,
-      depth: tb,
-      cut: { pos: { x: cutX(tb), y: rd, z: panelDepth - bw }, size: { x: tb, y: endHeight, z: bw } },
+      depth: rd,
+      cut: { pos: { x: cutX(rd), y: rd, z: panelDepth - bw }, size: { x: rd, y: endHeight, z: bw } },
     });
   }
 
@@ -314,11 +326,15 @@ function computePieces(state) {
       ],
     });
   } else {
+    // Extended by rd (not bw) at each edge, same tongue-fills-pocket
+    // pattern as the end panels/dividers above -- rd is now also the
+    // depth of the back rabbet pocket this reaches into (see
+    // topBottomFeatures/endFeatures), so the two have to move together.
     add({
       type: 'backboard',
       label: 'Backboard',
-      size: { x: OW - 2 * t + 2 * bw, y: OH - 2 * t + 2 * bw, z: tb },
-      pos: { x: t - bw, y: t - bw, z: panelDepth - tb },
+      size: { x: OW - 2 * t + 2 * rd, y: OH - 2 * t + 2 * rd, z: tb },
+      pos: { x: t - rd, y: t - rd, z: panelDepth - tb },
       features: [{ kind: 'note', label: 'sits in perimeter rabbet, flush with back face' }],
     });
   }
