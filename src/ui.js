@@ -22,6 +22,7 @@ const NUMERIC_FIELDS = {
 };
 
 const CUTLIST_VISIBLE_KEY = 'cubbies-generator:cutlistVisible';
+const PIECEDIAGRAMS_VISIBLE_KEY = 'cubbies-generator:piecediagramsVisible';
 const SHEETLAYOUT_VISIBLE_KEY = 'cubbies-generator:sheetlayoutVisible';
 
 function makeVisibilityToggle(storageKey, contentId, toggleId, defaultVisible) {
@@ -48,6 +49,12 @@ function makeVisibilityToggle(storageKey, contentId, toggleId, defaultVisible) {
 }
 
 const cutlistVisibility = makeVisibilityToggle(CUTLIST_VISIBLE_KEY, 'cutlist', 'cutlistToggle', true);
+const piecediagramsVisibility = makeVisibilityToggle(
+  PIECEDIAGRAMS_VISIBLE_KEY,
+  'piecediagrams',
+  'piecediagramsToggle',
+  true
+);
 const sheetlayoutVisibility = makeVisibilityToggle(
   SHEETLAYOUT_VISIBLE_KEY,
   'sheetlayout',
@@ -211,6 +218,13 @@ function bindUI(state, update, generateLayout) {
     cutlistVisibility.apply(visible);
   });
   cutlistVisibility.apply(cutlistVisibility.get());
+
+  document.getElementById('piecediagramsToggle').addEventListener('click', () => {
+    const visible = document.getElementById('piecediagrams').hidden;
+    piecediagramsVisibility.set(visible);
+    piecediagramsVisibility.apply(visible);
+  });
+  piecediagramsVisibility.apply(piecediagramsVisibility.get());
 
   document.getElementById('sheetlayoutToggle').addEventListener('click', () => {
     const visible = document.getElementById('sheetlayout').hidden;

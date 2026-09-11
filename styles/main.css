@@ -175,6 +175,7 @@ fieldset select {
 }
 
 #cutlist-section,
+#piecediagrams-section,
 #sheetlayout-section {
   background: var(--panel);
   border-top: 1px solid var(--border);
@@ -211,6 +212,84 @@ fieldset select {
   margin-top: 0.75rem;
   max-height: 60vh;
   overflow: auto;
+}
+
+#piecediagrams {
+  margin-top: 0.75rem;
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.piece-diagram {
+  margin-bottom: 1.5rem;
+}
+
+.piece-caption {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.35rem;
+}
+
+.piece-svg {
+  display: block;
+  width: 100%;
+  max-width: 700px;
+  height: auto;
+  background: #faf8f4;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.piece-outline {
+  fill: #e9dfc8;
+  stroke: var(--accent);
+  stroke-width: 0.05;
+}
+
+.piece-cut-dado {
+  fill: rgba(138, 90, 43, 0.35);
+  stroke: var(--accent);
+  stroke-width: 0.03;
+}
+
+.piece-cut-rabbet {
+  fill: rgba(179, 38, 30, 0.22);
+  stroke: var(--error);
+  stroke-width: 0.03;
+}
+
+.piece-cut-label {
+  fill: var(--text);
+}
+
+.dim-line,
+.dim-ext {
+  stroke: var(--muted);
+  stroke-width: 0.02;
+}
+
+.dim-ext {
+  stroke-dasharray: 0.04 0.04;
+}
+
+.dim-arrow {
+  fill: var(--muted);
+}
+
+.dim-text {
+  fill: var(--text);
+}
+
+.piece-notes {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.piece-notes li {
+  margin: 0.15rem 0;
 }
 
 #sheetlayout {

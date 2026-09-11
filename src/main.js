@@ -5,6 +5,7 @@ const { loadOrCreateState, recompute, saveToStorage } = Cubbies.state;
 const { computePieces } = Cubbies.geometry;
 const { createViewer } = Cubbies.viewer3d;
 const { renderCutList } = Cubbies.cutlist;
+const { renderPieceDiagrams } = Cubbies.piecediagrams;
 const { computeSheetLayout } = Cubbies.nesting;
 const { renderSheetLayout } = Cubbies.sheetlayout;
 const { bindUI, syncInputs, renderMessages } = Cubbies.ui;
@@ -30,8 +31,10 @@ function update() {
   if (errors.length === 0) {
     viewer.render(pieces, state.colorMode);
     renderCutList(document.getElementById('cutlist'), pieces, state.precision);
+    renderPieceDiagrams(document.getElementById('piecediagrams'), pieces, state.precision);
   } else {
     renderCutList(document.getElementById('cutlist'), [], state.precision);
+    renderPieceDiagrams(document.getElementById('piecediagrams'), [], state.precision);
   }
 }
 

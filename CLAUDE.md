@@ -330,6 +330,75 @@ Requirements:
   — what gets printed shouldn't depend on whether the panel happened to be
   collapsed when the user hit print.
 
+## Piece Diagrams
+
+- One 2D shop drawing per distinct piece — grouped the same way the cut
+  list collapses identical pieces into one row with a qty count (e.g. Top
+  and Bottom panels share one "Top / Bottom Panel" diagram, all `R*(C-1)`
+  shelves share one "Shelf" diagram) — showing the outer Length × Width
+  dimensioned on the outside, and the position/size of every dado and
+  rabbet dimensioned on the inside. Lives in its own full-width section
+  (`#piecediagrams-section`) between Cut List and Sheet Layout, collapsible
+  the same way via a header button (`#piecediagramsToggle`) and its own
+  `localStorage` view-preference key (`cubbies-generator:piecediagramsVisible`,
+  excluded from Import/Export same as the cut list's), and forced fully
+  visible under print.
+- **Live, not button-gated** — unlike Sheet-Goods Nesting below. What's
+  expensive there is per-*instance* bin-packing; here the diagram count is
+  bounded by the number of distinct piece *types* (at most 5, regardless of
+  grid size), so a full rebuild on every input change is cheap the same way
+  the cut list's is, and there's no reason to make the user click a button
+  for it.
+- **Geometry comes from each feature's `cut` box, not its `at`/`from` text.**
+  `geometry.js` exports a `featureFaceRect(piece, feature)` helper
+  (alongside `pieceFootprint`/`PIECE_LABELS`, for the same reason — a single
+  source of truth so this can't drift from what `viewer3d.js` actually
+  carves) that projects a feature's local `cut` box onto the same 2D face
+  `pieceFootprint`'s length/width describe. This is a deliberately
+  different number from the cut list's "at 12\" from bottom edge" text for
+  an end panel or divider: that text measures from the *assembled case's*
+  reference edge (e.g. the clear-height bottom), but an end panel's or
+  divider's own length is extended by `rd`/`dd` past that edge so its
+  tongue fills the receiving pocket (see Joinery Model & Geometry, items
+  2-3), so the piece's own physical tip sits `rd`/`dd` below that datum. A
+  distance from the case's clear-height bottom isn't something you can mark
+  with a tape on the raw, not-yet-installed board; a distance from the
+  piece's own physical edge is — so the diagram dimensions from the latter,
+  on purpose, and will not numerically match the cut list's "at ... from
+  ..." text for those two piece types. This isn't a bug to reconcile if
+  it's noticed later.
+- A band's orientation (does its position vary along the piece's length or
+  its width?) is decided by which axis it covers *relatively more of* —
+  `rect.h / width >= rect.w / length` — rather than an exact "spans the
+  full axis" check. That tolerance matters, not just as defensive coding:
+  the inset backboard's rabbet on an end panel spans nearly the full length
+  but stops `rd` short at each end (it shares the corner with the rabbet
+  joint there), so it never exactly equals the piece's full length: an
+  exact-match check would leave it unclassified and undimensioned. Verified
+  by screenshot in inset mode — the band renders as a near-full-length
+  strip with visible margins at both ends, exactly matching that geometry.
+- A band flush with an edge on its varying axis (the two corner rabbets on
+  a top/bottom panel, any inset-mode back rabbet) skips its position
+  dimension line — obvious from the overall dimension already, so a
+  redundant callout would just be clutter — but still gets shaded and
+  labeled. Internal bands (divider dados, shelf dados) each get their own
+  stacked dimension line in the bottom or right margin (one lane per band,
+  offset outward) so multiple dados on one piece don't overlap each other.
+- Features with no `cut` (text-only joinery notes — a divider's end-grain
+  top/bottom edge dados, a shelf's "seats into a dado" note, a backboard's
+  assembly note) have no on-piece position to dimension, so they're listed
+  as plain text below the diagram instead of drawn.
+- `src/svgutil.js` holds `el()` and `fitLabels()` (the shrink-to-fit
+  text-metrics logic from Sheet-Goods Nesting below), extracted out of
+  `sheetlayout.js` so `piecediagrams.js`'s on-band labels reuse the same
+  already-verified fitting behavior instead of re-deriving it — the two
+  renderers share this, not the rest of each other's drawing logic.
+  Re-verified the existing sheet-layout label-overflow sweep against zero
+  regressions after the extraction.
+- Print stylesheet: same pattern as Sheet-Goods Nesting — one piece
+  diagram per printed page (`break-before: page` on `.piece-diagram`),
+  forced fully visible and unscrolled regardless of the on-screen toggle.
+
 ## Sheet-Goods Nesting
 
 - Lays the cut list out onto `sheetW x sheetH` sheets (default 48" x 96",
@@ -381,7 +450,8 @@ Requirements:
   rotates 90° to run along a piece's long axis when the piece is notably
   taller than wide in its drawn orientation (`r.h > r.w * 1.3`), since a
   piece like an end panel packs far narrower than its label is long.
-  Beyond that, `fitLabels()` in `sheetlayout.js` measures each label with
+  Beyond that, `fitLabels()` (in `src/svgutil.js`, shared with
+  `piecediagrams.js` — see Piece Diagrams, above) measures each label with
   the browser's own `getComputedTextLength()` — after the SVGs are
   attached to the document, since accurate measurement needs a connected
   element — and shrinks the font to fit, down to a floor of
@@ -436,11 +506,11 @@ Requirements:
   and rabbet width, display precision, color mode, and the sheet-goods
   nesting settings (`sheetW`, `sheetH`, `kerf`, `allowRotation`). *Not*
   included: `errors`/`warnings` (derived — `recompute()` regenerates them
-  from the fields above), the cut-list or sheet-layout collapse states
-  (view preferences, not design parameters — see Cut List & Export and
-  Sheet-Goods Nesting, above), or the sheet layout result itself (also
-  derived — regenerated on demand from the pieces + those same settings,
-  see Sheet-Goods Nesting).
+  from the fields above), the cut-list, piece-diagrams, or sheet-layout
+  collapse states (view preferences, not design parameters — see Cut List
+  & Export, Piece Diagrams, and Sheet-Goods Nesting, above), or the sheet
+  layout result itself (also derived — regenerated on demand from the
+  pieces + those same settings, see Sheet-Goods Nesting).
 - **Import is deliberately forgiving, not strict.** `applySerializedState`
   copies over only known keys whose value passes a basic type/enum check
   (finite number, boolean, or one of the expected enum strings) and
@@ -537,9 +607,14 @@ src/
   cutlist.js    renders the cut list table from geometry.js output
   nesting.js    pure functions: pieces -> sheet-packing layout
                 (guillotine/best-area-fit), grouped by thickness
+  svgutil.js    tiny shared SVG helpers (el(), fitLabels()) used by
+                sheetlayout.js and piecediagrams.js
   sheetlayout.js  renders nesting.js's layout as SVG cut diagrams
+  piecediagrams.js  renders one dimensioned SVG shop drawing per distinct
+                piece, from geometry.js's featureFaceRect() output
   ui.js         input panel wiring, validation messages, settings
-                export/import/reset, cut-list and sheet-layout toggles
+                export/import/reset, cut-list/piece-diagrams/sheet-layout
+                toggles
 styles/
   main.css
   print.css
@@ -551,7 +626,9 @@ function from state to a plain-data piece list that both `viewer3d.js` and
 guaranteed to match. `nesting.js` follows the same principle: it's a pure
 function from a piece list to a plain-data sheet layout, with all rendering
 left to `sheetlayout.js` — so the packing logic can be tested and reasoned
-about independent of the DOM.
+about independent of the DOM. `geometry.js`'s `featureFaceRect()` is the
+same idea applied to `piecediagrams.js`: it stays a pure box-projection
+function, with all SVG construction left to `piecediagrams.js`.
 
 ## Settled Design Decisions
 

@@ -5,6 +5,7 @@
   }
 
   #cutlist-section,
+  #piecediagrams-section,
   #sheetlayout-section {
     border-top: none;
     padding: 0;
@@ -24,11 +25,13 @@
      overrides. What gets printed shouldn't depend on which panels
      happened to be expanded when the user hit print. */
   #cutlist[hidden],
+  #piecediagrams[hidden],
   #sheetlayout[hidden] {
     display: block !important;
   }
 
   #cutlist,
+  #piecediagrams,
   #sheetlayout {
     max-height: none;
     overflow: visible;
@@ -48,16 +51,19 @@
     break-inside: avoid;
   }
 
-  .sheet-diagram {
+  .sheet-diagram,
+  .piece-diagram {
     break-before: page;
     break-inside: avoid;
   }
 
-  .sheet-diagram:first-of-type {
+  .sheet-diagram:first-of-type,
+  .piece-diagram:first-of-type {
     break-before: auto;
   }
 
-  .sheet-svg {
+  .sheet-svg,
+  .piece-svg {
     max-width: 100%;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

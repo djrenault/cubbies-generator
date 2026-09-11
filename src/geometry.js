@@ -192,6 +192,32 @@ function pieceFootprint(piece) {
   }
 }
 
+// Projects a feature's local `cut` box(es) onto the 2D face piecediagrams.js
+// draws for this piece type -- the same face pieceFootprint's length/width
+// describe -- so the diagram is built from exactly what geometry.js modeled
+// (and what viewer3d.js actually carves) instead of re-deriving axis
+// mappings independently in a second place where they could drift out of
+// sync. Returns null for a feature with no `cut` (a text-only joinery note
+// -- e.g. a divider's end-grain top/bottom dados, or a shelf's "seats into
+// a dado" note) -- piecediagrams.js lists those as plain text instead of
+// drawing them. A divider's shelf dado carries *two* cuts (one per face,
+// see dividerFeatures) that project to the identical face rect by
+// construction, so taking the first is enough; nothing else in this model
+// emits more than one cut per feature.
+function featureFaceRect(piece, feature) {
+  if (!feature.cut) return null;
+  const c = Array.isArray(feature.cut) ? feature.cut[0] : feature.cut;
+  switch (piece.type) {
+    case 'top-bottom':
+      return { x: c.pos.x, y: c.pos.z, w: c.size.x, h: c.size.z };
+    case 'end':
+    case 'divider':
+      return { x: c.pos.y, y: c.pos.z, w: c.size.y, h: c.size.z };
+    default:
+      return null;
+  }
+}
+
 function computePieces(state) {
   if (state.errors.length) return { pieces: [], errors: state.errors };
 
@@ -301,6 +327,6 @@ function computePieces(state) {
 }
 
 window.Cubbies = window.Cubbies || {};
-window.Cubbies.geometry = { computePieces, pieceFootprint, PIECE_LABELS };
+window.Cubbies.geometry = { computePieces, pieceFootprint, PIECE_LABELS, featureFaceRect };
 
 })();

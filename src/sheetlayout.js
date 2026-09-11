@@ -2,17 +2,9 @@
   'use strict';
 
 const { formatFraction } = Cubbies.units;
+const { SVG_NS, MIN_FONT_SIZE, el, fitLabels } = Cubbies.svgutil;
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 const GOLDEN_ANGLE = 137.508; // same convention as viewer3d.js's "identify" color mode
-const MIN_FONT_SIZE = 0.35;
-
-function el(name, attrs, parent) {
-  const e = document.createElementNS(SVG_NS, name);
-  Object.keys(attrs || {}).forEach((k) => e.setAttribute(k, attrs[k]));
-  if (parent) parent.appendChild(e);
-  return e;
-}
 
 // Sheet diagrams always render landscape (wider than tall) regardless of
 // which of sheetW/sheetH the user entered as the bigger number -- that's
@@ -105,29 +97,9 @@ function renderSheetSvg(sheet, sheetW, sheetH, precision) {
   return svg;
 }
 
-// Shrinks each label's font size to fit within the space set aside for it
-// (data-avail-width, from renderSheetSvg above), using the browser's own
-// text metrics -- run after the SVGs are attached to the document, since
-// getComputedTextLength() needs a connected element to measure accurately.
-// The clip-path on each label is still there as a hard backstop, but this
-// is what actually keeps text from needing to be clipped in the first
-// place for all but the smallest pieces.
-function fitLabels(root) {
-  root.querySelectorAll('text[data-avail-width]').forEach((text) => {
-    const availWidth = parseFloat(text.getAttribute('data-avail-width'));
-    const baseFontSize = parseFloat(text.getAttribute('data-base-font-size'));
-    const tspans = Array.from(text.querySelectorAll('tspan'));
-    const widest = Math.max(0, ...tspans.map((ts) => ts.getComputedTextLength()));
-    if (widest <= availWidth) return;
-
-    const scale = Math.max(MIN_FONT_SIZE / baseFontSize, availWidth / widest);
-    const newFontSize = baseFontSize * scale;
-    text.setAttribute('font-size', newFontSize);
-    tspans.forEach((ts, idx) => {
-      ts.setAttribute('dy', idx === 0 ? -newFontSize * 0.6 : newFontSize * 1.2);
-    });
-  });
-}
+// fitLabels (shrink-to-fit via getComputedTextLength(), run after SVGs are
+// attached to the document) lives in svgutil.js now, shared with
+// piecediagrams.js -- see that file for the rationale.
 
 function renderSheetLayout(container, result, options) {
   const { precision, sheetW, sheetH } = options;
