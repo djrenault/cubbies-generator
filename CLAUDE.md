@@ -53,6 +53,36 @@ before touching that code again:
   thrown error. Fixed by trimming each cut to stop exactly where a
   deeper or equally-deep cut already covers the rest, rather than by
   padding harder — see Joinery Model & Geometry, items 1-2 and 5.
+- The exact-touch trim from the fix above (stopping one cut precisely
+  where a deeper one begins, zero nominal gap) turned out not to be
+  enough on its own: `CSG_EPS` pads *every* cut symmetrically larger
+  before subtraction (see 3D Viewer, `CSG_EPS`), so two cuts placed to
+  meet exactly still end up overlapping by `2*CSG_EPS` once padded — a
+  thin but real reintroduction of the same class of problem, reported by
+  the same user as a jagged, badly-triangulated seam (not a checkerboard
+  this time) at the divider-dado/back-rabbet corner, still present after
+  the previous fix shipped. Confirmed via an overlap checker that mirrors
+  `buildPieceMesh`'s own padding math before checking pairwise cut-box
+  overlap, not just the nominal (unpadded) geometry the first fix's
+  checker used — the nominal check reported 0 overlaps and missed this
+  entirely. Fixed two ways together: a `JOINT_GAP` margin (0.015", well
+  above `2*CSG_EPS`) added to each exact-touch trim so the cuts stop a
+  hair short of each other instead of meeting exactly — see Joinery
+  Model & Geometry, items 1-2 — and `CSG_EPS` itself raised from `0.001`
+  to `0.01`, which is what actually resolved the specific jagged
+  triangulation visible in the report (the `JOINT_GAP` margin alone,
+  tested in isolation, did not — see 3D Viewer, `CSG_EPS`). Re-verified
+  with the same padded-overlap checker (0 overlaps, down from a nonzero
+  padded-overlap count) and a re-run of the ~1700-combination CSG fuzz
+  sweep (0 render failures). **Debugging note for next time:** a debug
+  camera placed extremely close to, or literally inside, solid mesh
+  geometry can produce artifacts (near-clip-plane effects, visible
+  backfaces) that don't occur through normal orbit/pan/zoom use from
+  outside the model — one such artifact found while chasing this bug was
+  confirmed, after the fact, to be exactly that: invisible from every
+  realistic camera distance and angle, including a legitimate
+  from-behind-the-case shot. Rule that out before treating a close-up
+  screenshot artifact as a real geometry defect.
 
 Treat every formula and structural decision below as the source of truth
 for how the app actually behaves; if you change the code, update the
@@ -317,6 +347,31 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
      overlap check (0 remaining, down from 16) and a broader sweep across
      1280 `rows × columns × t × tb × bw` combinations (896 rendered) —
      0 overlaps and 0 CSG failures across all of them.
+   - **"Meet edge-to-edge with zero nominal overlap" turned out to still
+     overlap once rendered, because `CSG_EPS` pads every cut before
+     subtraction (see 3D Viewer, `CSG_EPS`).** Padding two cuts that were
+     trimmed to touch exactly expands each of them outward, so they end
+     up overlapping by `2*CSG_EPS` at render time even though their
+     nominal (unpadded) boxes — what a pairwise-overlap checker sees by
+     default — don't overlap at all. Reported by the same user as a
+     jagged, badly-triangulated seam (visually distinct from the
+     checkerboard dithering above) at the divider-dado/back-rabbet
+     corner, still present after the fix above shipped; confirmed by
+     re-running the overlap checker against *padded* geometry (mirroring
+     `buildPieceMesh`'s own padding math) instead of nominal, which found
+     the reintroduced overlap the nominal check missed. Fixed by giving
+     the trim a real margin instead of an exact touch: `JOINT_GAP`
+     (0.015", comfortably larger than `2*CSG_EPS` could ever close) is
+     subtracted at each of the trim points above — the divider/shelf
+     dado's `dadoZ` stops `JOINT_GAP` short of `panelDepth - bw`, and the
+     back rabbet's X-range is inset by `JOINT_GAP` on each side — leaving
+     a deliberate, sub-1/32" uncut sliver between the two cuts rather
+     than a coincident boundary. `JOINT_GAP` alone, tested in isolation,
+     did *not* clear the reported jagged seam; clearing it also required
+     raising `CSG_EPS` itself from `0.001` to `0.01` (see 3D Viewer,
+     `CSG_EPS`) — both changes ship together. Re-verified with the
+     padded-overlap checker (0 overlaps) and a re-run of the existing
+     ~1700-combination CSG fuzz sweep (0 render failures).
 
 **Divider x-positions** (left inner face = 0, +x toward the right end):
 divider `k` (1-indexed, `k = 1..C-1`) sits with its left face at
@@ -423,7 +478,7 @@ Requirements:
   alongside its text description; `viewer3d.js` subtracts them from the
   piece's box with `three-bvh-csg`. Pieces with no cuts (shelves, the
   backboard) skip CSG and render as plain boxes.
-- **Every cut is padded ~0.001" larger than nominal before it's subtracted**
+- **Every cut is padded ~0.01" larger than nominal before it's subtracted**
   (`CSG_EPS` in `viewer3d.js`, applied only to the mesh geometry — the cut
   list still reports the exact nominal width/depth/at values from
   `geometry.js`, untouched). This isn't cosmetic: several cuts on the same
@@ -439,6 +494,37 @@ Requirements:
   issue (another exact-coplanarity case) before assuming a logic bug in
   `geometry.js`'s cut positions — check whether bumping `CSG_EPS` up
   resolves it before re-deriving the joinery math.
+  - **`CSG_EPS` started at `0.001` and was raised to `0.01` after a second,
+    related failure mode surfaced: padding can *reintroduce* overlap at a
+    boundary two cuts were deliberately trimmed to meet exactly (see
+    Joinery Model & Geometry, item 5's `JOINT_GAP` entry, and the Status
+    entry above) — a distinct case from the original coplanarity-only
+    problem this padding was designed for, since here the cuts don't just
+    touch, they end up genuinely overlapping by `2*CSG_EPS` once padded.
+    That reintroduced overlap rendered as a jagged, badly-triangulated
+    seam rather than a thrown exception, on a real user config, and
+    persisted even after `geometry.js`'s cuts were given a real
+    (`JOINT_GAP`) gap at that boundary — it was specifically raising
+    `CSG_EPS` itself (tested at `0.005`, insufficient — produced a
+    different, wrong-shaped small notch artifact instead of jaggedness;
+    `0.01`, clean; `0.02`, also clean but no better than `0.01`) that
+    resolved the visible artifact. Both fixes ship together (`JOINT_GAP`
+    in `geometry.js` plus this bump), verified with a padded-geometry
+    overlap checker (0 overlaps, mirroring `buildPieceMesh`'s exact
+    padding math rather than checking nominal/unpadded cut boxes, which
+    had missed this) and a re-run of the fuzz sweep above (0 failures).
+  - **Testing-methodology pitfall found while chasing the above**: a
+    debug camera positioned extremely close to, or literally inside,
+    solid mesh geometry (useful for inspecting a specific seam up close)
+    can itself produce rendering artifacts — near-clip-plane effects,
+    visible backfaces — that never occur through normal orbit/pan/zoom
+    use from outside the model. One such artifact (a "spike" at a
+    corner) was chased at length before being confirmed, by re-rendering
+    the same corner from realistic viewing distances and from a
+    legitimate from-behind-the-case angle, to be exactly that: an
+    artifact of the extreme camera placement, not the mesh. Rule this
+    out — re-check from a normal viewing distance — before treating a
+    close-up debug screenshot as proof of a real geometry defect.
 - Nice-to-have, not required for v1: click a piece to highlight it and
   scroll/highlight the matching cut-list row; an exploded-view slider.
 

@@ -36,7 +36,7 @@ function collectCuts(piece) {
 // tool's 1/32"-finest display cares about, so it's not a visible or
 // dimensional change -- purely a CSG robustness workaround. Only affects
 // the 3D mesh; cutlist.js reads the unpadded nominal width/depth/at fields.
-const CSG_EPS = 0.001;
+const CSG_EPS = 0.01;
 
 function buildPieceMesh(piece, material, evaluator) {
   const size = piece.size;

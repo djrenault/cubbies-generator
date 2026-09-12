@@ -59,10 +59,29 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
   // programmatic sweep that found every dado/rabbet pair whose cut boxes
   // volumetrically overlap (16 pairs in that report's config, all
   // introduced when the back rabbet started sharing `rd` with the other
-  // cuts -- see the back rabbet's own comment below). Stopping the dado
-  // exactly where the back rabbet begins removes the overlap with no
-  // loss: the two cuts now meet edge-to-edge instead of overlapping.
-  const dadoZ = backboardMount === 'inset' ? Math.max(panelDepth - bw, 0.001) : panelDepth;
+  // cuts -- see the back rabbet's own comment below).
+  //
+  // Stopping the dado's cut *exactly* where the back rabbet begins was
+  // the first attempt, on the theory that two cuts meeting edge-to-edge
+  // (zero nominal overlap) would render cleanly -- it didn't. CSG_EPS
+  // pads *every* cut symmetrically before subtraction (see viewer3d.js),
+  // so two cuts placed to touch exactly still end up overlapping by
+  // 2*CSG_EPS once padded, and that reintroduced sliver -- thin, and
+  // sitting right where another cut's edge is also padded into it --
+  // was degenerate enough to make three-bvh-csg emit visibly jagged,
+  // badly-triangulated geometry at the seam (confirmed by a follow-up
+  // report from the same user, reproduced by placing the camera at that
+  // exact seam). A real, deliberate gap -- JOINT_GAP, comfortably larger
+  // than the 2*CSG_EPS padding could ever close -- avoids that: the dado
+  // stops a hair short of the back rabbet's territory instead of exactly
+  // at its edge, leaving a JOINT_GAP-thin uncut ridge between them.
+  // JOINT_GAP is small enough to stay under this tool's finest display
+  // precision (1/32") and sits right at the very back of an internal
+  // joint, so it isn't a real fit or visible-surface concern -- same
+  // "too small to matter" tradeoff CSG_EPS itself already makes, just a
+  // larger margin because this case needs one.
+  const JOINT_GAP = 0.015;
+  const dadoZ = backboardMount === 'inset' ? Math.max(panelDepth - bw - JOINT_GAP, 0.001) : panelDepth;
 
   features.push({
     kind: 'rabbet',
@@ -102,20 +121,28 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
     // actually needs to reach into this pocket (fixed together with that
     // extension below, in computePieces).
     //
-    // X-range is trimmed to [t, OW-t] -- NOT the full OW -- because the
-    // corner zones (X: 0..t and OW-t..OW) are already fully covered by
-    // the end rabbets above: those run the *full* panelDepth at the
-    // *same* rd depth, so a back rabbet also reaching into the corner
-    // would just be re-removing material the end rabbet already removed
-    // (another instance of the overlap described on `dadoZ`, above, but
-    // here it's the *wider* cut -- the back rabbet -- that's redundant in
-    // the corner, not the narrower one, so it's the one trimmed).
+    // X-range is trimmed to [t + JOINT_GAP, OW - t - JOINT_GAP] -- NOT
+    // the full OW -- because the corner zones (X: 0..t and OW-t..OW) are
+    // already fully covered by the end rabbets above: those run the
+    // *full* panelDepth at the *same* rd depth, so a back rabbet also
+    // reaching into the corner would just be re-removing material the
+    // end rabbet already removed (another instance of the overlap
+    // described on `dadoZ`, above, but here it's the *wider* cut -- the
+    // back rabbet -- that's redundant in the corner, not the narrower
+    // one, so it's the one trimmed). The `JOINT_GAP` margin (not just
+    // `t`/`OW - t` exactly) is the same fix as `dadoZ`'s, for the same
+    // reason: an exact-touch boundary here still overlaps by 2*CSG_EPS
+    // once both cuts are padded, which is what produced the jagged
+    // triangulation this comment's sibling describes.
     features.push({
       kind: 'rabbet',
       label: 'back rabbet (receives backboard)',
       width: bw,
       depth: rd,
-      cut: { pos: { x: t, y: cutY(rd), z: panelDepth - bw }, size: { x: OW - 2 * t, y: rd, z: bw } },
+      cut: {
+        pos: { x: t + JOINT_GAP, y: cutY(rd), z: panelDepth - bw },
+        size: { x: Math.max(OW - 2 * t - 2 * JOINT_GAP, 0.001), y: rd, z: bw },
+      },
     });
   }
 
@@ -135,10 +162,12 @@ function endFeatures({ t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps, inside
   const cutX = (depth) => (insideAtMaxX ? t - depth : 0);
   const features = [];
 
-  // Same reasoning as `dadoZ` in topBottomFeatures: in inset mode, stop
-  // a shelf dado's own Z-reach right where the (deeper) back rabbet
-  // begins, instead of overlapping it for the rest of panelDepth.
-  const dadoZ = backboardMount === 'inset' ? Math.max(panelDepth - bw, 0.001) : panelDepth;
+  // Same reasoning (and same JOINT_GAP margin) as `dadoZ` in
+  // topBottomFeatures: in inset mode, stop a shelf dado's own Z-reach a
+  // hair short of where the (deeper) back rabbet begins, instead of
+  // running all the way to panelDepth and overlapping it.
+  const JOINT_GAP = 0.015;
+  const dadoZ = backboardMount === 'inset' ? Math.max(panelDepth - bw - JOINT_GAP, 0.001) : panelDepth;
 
   rowGaps.forEach((g, i) => {
     features.push({
