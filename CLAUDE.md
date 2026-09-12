@@ -445,23 +445,32 @@ Requirements:
   on purpose, and will not numerically match the cut list's "at ... from
   ..." text for those two piece types. This isn't a bug to reconcile if
   it's noticed later.
-- A band's orientation (does its position vary along the piece's length or
-  its width?) is decided by which axis it covers *relatively more of* —
-  `rect.h / width >= rect.w / length` — rather than an exact "spans the
-  full axis" check. That tolerance matters, not just as defensive coding:
-  the inset backboard's rabbet on an end panel spans nearly the full length
-  but stops `rd` short at each end (it shares the corner with the rabbet
-  joint there), so it never exactly equals the piece's full length: an
-  exact-match check would leave it unclassified and undimensioned. Verified
-  by screenshot in inset mode — the band renders as a near-full-length
-  strip with visible margins at both ends, exactly matching that geometry.
-- A band flush with an edge on its varying axis (the two corner rabbets on
-  a top/bottom panel, any inset-mode back rabbet) skips its position
+- **Each band is checked against both axes independently** — does it
+  reach both edges of the length axis, and does it reach both edges of
+  the width axis — rather than being classified as a single "vertical"
+  or "horizontal" band with one axis checked. A band can need a position
+  dimension on neither axis, either one, or (in principle) both; those
+  are unrelated questions. An earlier version picked one axis per band
+  (whichever it covers *relatively more of*, `rect.h / width >= rect.w
+  / length`, to handle the inset backboard's rabbet on a top/bottom
+  panel spanning nearly-but-not-exactly the full length) and checked
+  edge-flushness only on that one axis. That missed the same rabbet's
+  behavior *on an end panel*: there it spans nearly the full length
+  (stopping `rd` short of both ends to share the corner with the rabbet
+  joint) — a real, previously-undimensioned distance a user asked to
+  see, "how far from the end the rabbet starts" — while *also* being
+  flush against the back edge on the width axis (correctly needing no
+  callout there). One band, two axes, two different answers — a
+  per-band single-axis classification can't represent that; checking
+  both axes independently for every band can, and does.
+- A band flush with an edge on a given axis skips that axis's position
   dimension line — obvious from the overall dimension already, so a
   redundant callout would just be clutter — but still gets shaded and
-  labeled. Internal bands (divider dados, shelf dados) each get their own
-  stacked dimension line in the bottom or right margin (one lane per band,
-  offset outward) so multiple dados on one piece don't overlap each other.
+  labeled. A band not flush on the length axis gets a stacked line in
+  the bottom margin (divider dados on top/bottom panels; the inset back
+  rabbet on end panels, now); not flush on the width axis, the right
+  margin (shelf dados on end panels/dividers). Multiple such lines on
+  one piece stack outward, one lane per band, so they don't overlap.
 - Features with no `cut` (text-only joinery notes — a divider's end-grain
   top/bottom edge dados, a shelf's "seats into a dado" note, a backboard's
   assembly note) have no on-piece position to dimension, so they're listed

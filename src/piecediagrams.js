@@ -160,27 +160,31 @@ function renderPieceSvg(piece, precision) {
     .map((f) => ({ feature: f, rect: featureFaceRect(piece, f) }))
     .filter((b) => b.rect && b.rect.w > EPS && b.rect.h > EPS);
 
-  // A band that spans (relatively) more of the width axis than the length
-  // axis is a "vertical" band -- its position varies along length (x) --
-  // and vice versa. A ratio comparison (rather than an exact "== full
-  // width" check) is what's needed here, not just a nicety: the inset
-  // backboard's rabbet on an end panel spans nearly the full length but
-  // stops `rd` short at each end (it shares the corner with the rabbet
-  // joint there), so it never exactly equals the piece's full length.
+  // Each band is checked against both axes independently, not classified
+  // as a single "vertical" or "horizontal" band -- a band can need a
+  // position dimension on *neither*, *either*, or (in principle) *both*
+  // axes, and those two questions are unrelated to each other. The inset
+  // backboard's rabbet on an end panel is the case that requires this:
+  // it spans nearly the full length (so it reads as a "spans the length"
+  // band) but stops `rd` short of *both* ends to share the corner with
+  // the rabbet joint there, so its length-axis position (how far from
+  // each end it starts) is exactly as real a dimension as its width-axis
+  // flushness (against the back edge, which needs no callout). Treating
+  // "spans an axis" as the same thing as "flush on that axis" -- as an
+  // earlier version effectively did, checking only one axis per band --
+  // missed this one.
   bands.forEach((b) => {
     const { rect } = b;
-    b.vertical = rect.h / width >= rect.w / length;
-    b.edgeFlush = b.vertical
-      ? rect.x <= EPS || rect.x + rect.w >= length - EPS
-      : rect.y <= EPS || rect.y + rect.h >= width - EPS;
+    b.xFlush = rect.x <= EPS || rect.x + rect.w >= length - EPS;
+    b.yFlush = rect.y <= EPS || rect.y + rect.h >= width - EPS;
   });
 
-  // Only bands that aren't obviously flush with an edge get their own
-  // stacked position-dimension line -- an edge rabbet's position is
-  // already implied by the overall dimension, so a redundant callout
-  // would just be clutter.
-  const vLaneBands = bands.filter((b) => b.vertical && !b.edgeFlush);
-  const hLaneBands = bands.filter((b) => !b.vertical && !b.edgeFlush);
+  // Only bands that aren't obviously flush with an edge on a given axis
+  // get their own stacked position-dimension line for it -- an edge
+  // rabbet's position on that axis is already implied by the overall
+  // dimension, so a redundant callout would just be clutter.
+  const vLaneBands = bands.filter((b) => !b.xFlush);
+  const hLaneBands = bands.filter((b) => !b.yFlush);
 
   const bottomMargin = PAD + (vLaneBands.length ? vLaneBands.length * LANE + LANE_GAP : 0);
   const rightMargin = PAD + (hLaneBands.length ? hLaneBands.length * LANE + LANE_GAP : 0);
