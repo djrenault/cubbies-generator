@@ -41,6 +41,18 @@ before touching that code again:
   the real ask. Fixed by decoupling the rabbet's depth-into-thickness
   from `tb` entirely (now `rd`) — see Joinery Model & Geometry, item 5
   (Backboard).
+- That same fix introduced a follow-on bug: once the inset back rabbet's
+  depth became `rd`, it started *volumetrically overlapping* the corner
+  rabbets, divider dados, and shelf dados wherever their cut boxes
+  shared territory near the back of the panel — 16 overlapping cut pairs
+  in one reported config alone. Two overlapping subtractions on the same
+  mesh is a second, distinct way to trigger three-bvh-csg's
+  exact-coplanarity fragility (see 3D Viewer, `CSG_EPS`) beyond the
+  touching-but-not-overlapping case `CSG_EPS` padding already handles —
+  here it rendered as a checkerboard z-fighting glitch rather than a
+  thrown error. Fixed by trimming each cut to stop exactly where a
+  deeper or equally-deep cut already covers the rest, rather than by
+  padding harder — see Joinery Model & Geometry, items 1-2 and 5.
 
 Treat every formula and structural decision below as the source of truth
 for how the app actually behaves; if you change the code, update the
@@ -155,9 +167,24 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
      `width = t`, `depth = rd`, running the full `panelDepth`.
    - Dado on the inside face for each internal vertical divider:
      `width = t`, `depth = dd`, at each divider's x-position (see below).
+     Normally runs the full `panelDepth` in z — **except in inset mode**,
+     where it stops at `panelDepth - bw` instead: past that point is the
+     back rabbet's own territory (below), which cuts *deeper* (`rd` vs.
+     this dado's `dd`) and so already provides equal-or-greater relief
+     for the rest of the divider's run. Continuing the dado's own cut
+     into that zone would just be re-removing material the back rabbet
+     already removes — harmless geometrically, but exactly the kind of
+     redundant/overlapping subtraction that made three-bvh-csg's
+     mesh-based CSG glitch (see 3D Viewer, `CSG_EPS`, and the Status
+     entry above).
    - **Inset mount only:** rabbet along the back edge for the backboard:
-     `width = bw`, `depth = rd`, running the full width `OW`. Depth is
-     `rd`, not `tb` — see item 5 for why.
+     `width = bw`, `depth = rd`, running `x = t` to `OW - t` — **not**
+     the full width `OW`. Depth is `rd`, not `tb` — see item 5 for why.
+     Trimmed at each end for the mirror-image reason the divider dado
+     above is trimmed at its far end: `x < t` and `x > OW - t` are the
+     corner rabbets' own territory, already cut the full `panelDepth` at
+     the *same* `rd` depth, so reaching the back rabbet in there too
+     would be pure overlap with no gap to fill.
 
 2. **End panels** (left, right) — qty 2. `length = (OH - 2*t) + 2*rd`,
    `width = panelDepth`, `thickness = t`. The `+ 2*rd` matters: the panel's
@@ -168,7 +195,10 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
    "clear height" origin (`pos.y = t - rd`), so its tongues land exactly
    in the pockets rather than poking past them.
    - Dado on the inner face at each internal row boundary (`R - 1` of
-     them) for shelves: `width = t`, `depth = dd`.
+     them) for shelves: `width = t`, `depth = dd`. Same
+     `panelDepth - bw` trim in inset mode as the top/bottom panel's
+     divider dado above, and for the identical reason (the back rabbet
+     below already covers the rest of the run, deeper).
    - **Inset mount only:** rabbet along the back edge for the backboard:
      `width = bw`, `depth = rd` (see item 5).
 
@@ -258,6 +288,35 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
      validation-passing combination through the actual CSG pipeline —
      480 rendered, zero CSG failures, and a separate shoulder/reach check
      confirmed positive on all of them.
+   - **Making the back rabbet share `rd` with the other cuts (above)
+     introduced volumetric overlap between them, a second and distinct
+     way to break the CSG chain.** Reported as a checkerboard z-fighting
+     glitch in the 3D viewer on a real (valid, `bw >= tb`-satisfying)
+     config — not the `tb`-vs-`t` case above, which this same commit had
+     already fixed; this was a follow-on bug in ordinary configurations.
+     A programmatic sweep checking every pair of a piece's own cut boxes
+     for volumetric overlap (not just touching/coplanar boundaries, which
+     `CSG_EPS` already handles) found 16 overlapping pairs in the
+     reported config alone: the back rabbet, now `rd` deep like the
+     corner rabbets and divider/shelf dados, fully or partially contains
+     each of their footprints wherever it shares X/Y territory with them
+     near the back of a panel. Two overlapping subtractions targeting the
+     same material is a second, distinct trigger for three-bvh-csg's
+     exact-coplanarity fragility beyond the adjacent-but-not-overlapping
+     case `CSG_EPS`'s padding fixes — and it rendered as a dithered
+     z-fighting patch rather than a thrown error, which is why it wasn't
+     caught by the fuzz sweep just above (that sweep only checked for
+     thrown exceptions, not overlapping cut geometry). Fixed at the
+     source rather than by padding harder: each divider/shelf dado is
+     trimmed to stop exactly at `panelDepth - bw` in inset mode (see
+     items 1-2) since the back rabbet already covers the rest of the run
+     at equal or greater depth, and the back rabbet's own X-range is
+     trimmed to `t .. OW - t` (see item 1) since the corner rabbets
+     already fully cover those zones. The two cuts now meet edge-to-edge
+     with zero volumetric overlap, verified by re-running the pairwise
+     overlap check (0 remaining, down from 16) and a broader sweep across
+     1280 `rows × columns × t × tb × bw` combinations (896 rendered) —
+     0 overlaps and 0 CSG failures across all of them.
 
 **Divider x-positions** (left inner face = 0, +x toward the right end):
 divider `k` (1-indexed, `k = 1..C-1`) sits with its left face at

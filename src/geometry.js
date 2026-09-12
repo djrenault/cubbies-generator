@@ -45,6 +45,25 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
   const cutY = (depth) => (insideAtY0 ? 0 : t - depth);
   const features = [];
 
+  // In inset mode, a divider dado's own Z-reach would otherwise run the
+  // full panelDepth, straight through the back rabbet's own territory
+  // (Z: panelDepth-bw..panelDepth) -- and since the back rabbet cuts
+  // *deeper* there (rd, vs. the dado's own dd) it already provides equal
+  // or greater relief for whatever's seated in the dado throughout that
+  // back stretch, making the dado's own cut there pure redundant overlap
+  // on top of the back rabbet's. Two separate, overlapping subtractions
+  // for the same material is exactly the kind of exact-coplanarity/
+  // redundant-boundary case three-bvh-csg's mesh-based CSG is fragile
+  // against (see CSG_EPS in viewer3d.js) -- confirmed via a user report
+  // of a checkerboard z-fighting glitch at exactly this seam, and via a
+  // programmatic sweep that found every dado/rabbet pair whose cut boxes
+  // volumetrically overlap (16 pairs in that report's config, all
+  // introduced when the back rabbet started sharing `rd` with the other
+  // cuts -- see the back rabbet's own comment below). Stopping the dado
+  // exactly where the back rabbet begins removes the overlap with no
+  // loss: the two cuts now meet edge-to-edge instead of overlapping.
+  const dadoZ = backboardMount === 'inset' ? Math.max(panelDepth - bw, 0.001) : panelDepth;
+
   features.push({
     kind: 'rabbet',
     label: 'left end rabbet (receives left end panel)',
@@ -69,7 +88,7 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
       depth: dd,
       at,
       from: 'left edge',
-      cut: { pos: { x: at, y: cutY(dd), z: 0 }, size: { x: t, y: dd, z: panelDepth } },
+      cut: { pos: { x: at, y: cutY(dd), z: 0 }, size: { x: t, y: dd, z: dadoZ } },
     });
   });
 
@@ -82,12 +101,21 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
     // even for a valid `tb`, doesn't match how far the backboard's edge
     // actually needs to reach into this pocket (fixed together with that
     // extension below, in computePieces).
+    //
+    // X-range is trimmed to [t, OW-t] -- NOT the full OW -- because the
+    // corner zones (X: 0..t and OW-t..OW) are already fully covered by
+    // the end rabbets above: those run the *full* panelDepth at the
+    // *same* rd depth, so a back rabbet also reaching into the corner
+    // would just be re-removing material the end rabbet already removed
+    // (another instance of the overlap described on `dadoZ`, above, but
+    // here it's the *wider* cut -- the back rabbet -- that's redundant in
+    // the corner, not the narrower one, so it's the one trimmed).
     features.push({
       kind: 'rabbet',
       label: 'back rabbet (receives backboard)',
       width: bw,
       depth: rd,
-      cut: { pos: { x: 0, y: cutY(rd), z: panelDepth - bw }, size: { x: OW, y: rd, z: bw } },
+      cut: { pos: { x: t, y: cutY(rd), z: panelDepth - bw }, size: { x: OW - 2 * t, y: rd, z: bw } },
     });
   }
 
@@ -107,6 +135,11 @@ function endFeatures({ t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps, inside
   const cutX = (depth) => (insideAtMaxX ? t - depth : 0);
   const features = [];
 
+  // Same reasoning as `dadoZ` in topBottomFeatures: in inset mode, stop
+  // a shelf dado's own Z-reach right where the (deeper) back rabbet
+  // begins, instead of overlapping it for the rest of panelDepth.
+  const dadoZ = backboardMount === 'inset' ? Math.max(panelDepth - bw, 0.001) : panelDepth;
+
   rowGaps.forEach((g, i) => {
     features.push({
       kind: 'dado',
@@ -115,7 +148,7 @@ function endFeatures({ t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps, inside
       depth: dd,
       at: g.start,
       from: 'bottom edge',
-      cut: { pos: { x: cutX(dd), y: g.start + rd, z: 0 }, size: { x: dd, y: t, z: panelDepth } },
+      cut: { pos: { x: cutX(dd), y: g.start + rd, z: 0 }, size: { x: dd, y: t, z: dadoZ } },
     });
   });
 
