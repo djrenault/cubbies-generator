@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-const { Brush, Evaluator, SUBTRACTION, ADDITION } = ThreBvhCsg;
+const { Brush, Evaluator, SUBTRACTION } = ThreBvhCsg;
 
 const GOLDEN_ANGLE = 137.508;
 
@@ -20,61 +20,23 @@ function collectCuts(piece) {
   return cuts;
 }
 
-// Builds the actual grooved mesh for a piece: a solid box with its dados
-// and rabbets subtracted out via CSG. Pieces with no joinery cuts (shelves,
+// Builds the actual grooved mesh for a piece: a solid box with each dado
+// and rabbet subtracted out via CSG. Pieces with no joinery cuts (shelves,
 // backboard, or an end panel with nothing to dado) skip CSG entirely and
 // just return a plain box — cheaper, and there's nothing to subtract.
-//
-// Several of a piece's cuts still overlap by design after geometry.js's
-// own trims (e.g. a divider dado and the inset back rabbet both run right
-// up to their shared boundary, or a corner rabbet's cut and a coplanar
-// dado start flush at a panel's inside face). Subtracting overlapping or
-// touching cuts one at a time, each from the mesh the previous subtraction
-// already carved, is what makes three-bvh-csg produce bad output: a chain
-// of SUBTRACTIONs over shared or touching territory repeatedly re-cuts
-// faces the prior subtraction already created, which is a much less
-// robust case for a mesh-based CSG library than a single subtraction of
-// the combined shape. Unioning a piece's cuts into one combined solid
-// (via ADDITION) *before* ever touching the base piece, then subtracting
-// that single solid in one SUBTRACTION, avoids the chain entirely: union
-// only ever combines cut geometry with other cut geometry, never with the
-// base piece's own evolving mesh, so the final SUBTRACTION only has to
-// reason about one clean, unioned volume against the untouched base.
-//
-// This does NOT mean every redundant cut can be left in as-is, though --
-// see geometry.js's `dadoZ` and back-rabbet comments for the one case
-// that isn't just "touching or overlapping" but a cut whose cross-section
-// is an exact subset of another's on two full axes (e.g. an inset back
-// rabbet's corner region versus the corner/end rabbet there): that's a
-// structurally degenerate shape for this library regardless of how it's
-// built or how much padding is applied (tested up to 5x CSG_EPS with no
-// change), so geometry.js trims that specific redundancy out rather than
-// relying on this union to smooth it over. What's left for CSG_EPS to
-// handle here is the narrower, original case: cuts that are merely
-// touching or coplanar without being a full-axis subset of each other.
-// Padding every cut very slightly larger than its nominal size before
-// it's unioned breaks that exact coincidence. EPS is two orders of
-// magnitude below any precision a woodworker or this tool's 1/32"-finest
-// display cares about, so it's not a visible or dimensional change --
-// purely a CSG robustness workaround. Only affects the 3D mesh; cutlist.js
-// reads the unpadded nominal width/depth/at fields.
-const CSG_EPS = 0.01;
-
-function cutBrush(cut, piece, material) {
-  const geometry = new THREE.BoxGeometry(
-    Math.max(cut.size.x + 2 * CSG_EPS, 0.001),
-    Math.max(cut.size.y + 2 * CSG_EPS, 0.001),
-    Math.max(cut.size.z + 2 * CSG_EPS, 0.001)
-  );
-  const brush = new Brush(geometry, material);
-  brush.position.set(
-    piece.pos.x + cut.pos.x + cut.size.x / 2,
-    piece.pos.y + cut.pos.y + cut.size.y / 2,
-    piece.pos.z + cut.pos.z + cut.size.z / 2
-  );
-  brush.updateMatrixWorld();
-  return brush;
-}
+// Adjacent cuts on the same piece often share a boundary exactly (e.g. a
+// divider dado and the back rabbet on an inset top/bottom panel both start
+// at the panel's inside face) -- with several such cuts chained together,
+// three-bvh-csg's mesh-based CSG can hit exactly-coplanar faces and throw
+// ("Cannot read properties of null (reading 'dot')"), reproducible with
+// specific dd/rd/bw combinations especially on wider grids (more divider
+// dados chained = more chances to line up). Padding every cut very
+// slightly larger than its nominal size breaks that exact coincidence.
+// EPS is two orders of magnitude below any precision a woodworker or this
+// tool's 1/32"-finest display cares about, so it's not a visible or
+// dimensional change -- purely a CSG robustness workaround. Only affects
+// the 3D mesh; cutlist.js reads the unpadded nominal width/depth/at fields.
+const CSG_EPS = 0.001;
 
 function buildPieceMesh(piece, material, evaluator) {
   const size = piece.size;
@@ -90,12 +52,24 @@ function buildPieceMesh(piece, material, evaluator) {
   const cuts = collectCuts(piece);
   if (cuts.length === 0) return base;
 
-  let cutsUnion = cutBrush(cuts[0], piece, material);
-  for (let i = 1; i < cuts.length; i++) {
-    cutsUnion = evaluator.evaluate(cutsUnion, cutBrush(cuts[i], piece, material), ADDITION);
-  }
+  let result = base;
+  cuts.forEach((cut) => {
+    const cutGeometry = new THREE.BoxGeometry(
+      Math.max(cut.size.x + 2 * CSG_EPS, 0.001),
+      Math.max(cut.size.y + 2 * CSG_EPS, 0.001),
+      Math.max(cut.size.z + 2 * CSG_EPS, 0.001)
+    );
+    const cutBrush = new Brush(cutGeometry, material);
+    cutBrush.position.set(
+      piece.pos.x + cut.pos.x + cut.size.x / 2,
+      piece.pos.y + cut.pos.y + cut.size.y / 2,
+      piece.pos.z + cut.pos.z + cut.size.z / 2
+    );
+    cutBrush.updateMatrixWorld();
+    result = evaluator.evaluate(result, cutBrush, SUBTRACTION);
+  });
 
-  return evaluator.evaluate(base, cutsUnion, SUBTRACTION);
+  return result;
 }
 
 function disposeGroup(group) {

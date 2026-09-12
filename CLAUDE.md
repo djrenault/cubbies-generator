@@ -41,70 +41,76 @@ before touching that code again:
   the real ask. Fixed by decoupling the rabbet's depth-into-thickness
   from `tb` entirely (now `rd`) — see Joinery Model & Geometry, item 5
   (Backboard).
-- That same fix introduced a follow-on bug: once the inset back rabbet's
-  depth became `rd`, it started *volumetrically overlapping* the corner
-  rabbets, divider dados, and shelf dados wherever their cut boxes
-  shared territory near the back of the panel — 16 overlapping cut pairs
-  in one reported config alone. Two overlapping subtractions on the same
-  mesh is a second, distinct way to trigger three-bvh-csg's
-  exact-coplanarity fragility (see 3D Viewer, `CSG_EPS`) beyond the
-  touching-but-not-overlapping case `CSG_EPS` padding already handles —
-  here it rendered as a checkerboard z-fighting glitch rather than a
-  thrown error. Fixed by trimming each cut to stop exactly where a
-  deeper or equally-deep cut already covers the rest, rather than by
-  padding harder — see Joinery Model & Geometry, items 1-2 and 5.
-- The exact-touch trim from the fix above (stopping one cut precisely
-  where a deeper one begins, zero nominal gap) turned out not to be
-  enough on its own: `CSG_EPS` pads *every* cut symmetrically larger
-  before subtraction (see 3D Viewer, `CSG_EPS`), so two cuts placed to
-  meet exactly still end up overlapping by `2*CSG_EPS` once padded — a
-  thin but real reintroduction of the same class of problem, reported by
-  the same user as a jagged, badly-triangulated seam (not a checkerboard
-  this time) at the divider-dado/back-rabbet corner, still present after
-  the previous fix shipped. A first response to this added a deliberate
-  `JOINT_GAP` margin (0.015") on top of the exact trim, so the two cuts
-  stopped short of each other instead of meeting exactly — this cleared
-  the render glitch, but the user caught what it actually cost: a real,
-  physical strip of uncut material at the joint, visible as a
-  mis-colored sliver, and not what a rabbet should look like at all —
-  their own read (the rabbet needs to run its full reach, "no offset")
-  was the right diagnosis even though the specific cut and mechanism
-  differed from their guess. **`JOINT_GAP` was reverted entirely** — see
-  Joinery Model & Geometry, items 1-2 and 5, and 3D Viewer, `CSG_EPS`, for
-  what replaced it: `viewer3d.js`'s `buildPieceMesh` now unions a piece's
-  overlapping/touching cuts into one solid (via CSG `ADDITION`) before
-  ever subtracting from the base piece, instead of chaining a
-  `SUBTRACTION` per cut — the chain, not the touching/overlap itself, was
-  what made three-bvh-csg produce bad output, since each subtraction was
-  re-cutting faces the previous one had already carved. That alone wasn't
-  quite sufficient either: the inset back rabbet's corner region isn't
-  merely overlapping the corner/end rabbet there, it's an exact subset of
-  it on two full axes (identical Y-range, contained X and Z) — a
-  structurally degenerate shape for this CSG library regardless of how
-  it's built, confirmed by testing padding up to 5x `CSG_EPS` with zero
-  change to the resulting artifact. `geometry.js` trims *that specific*
-  redundancy back out (provably lossless — the corner/end rabbet was
-  already removing 100% of it, so nothing goes un-rabbeted, unlike
-  `JOINT_GAP`'s margin), while every other touching/overlapping cut is
-  left to the union to resolve. Verified with a 2080-config render-failure
-  sweep (0 failures) and a piece-mesh bounding-box check across the
-  reported config (0 pieces with stray geometry outside their own nominal
-  box). **Debugging notes for next time:** (1) a debug camera placed
-  extremely close to, or literally inside, solid mesh geometry can
-  produce artifacts (near-clip-plane effects, visible backfaces) that
-  don't occur through normal orbit/pan/zoom use — already documented
-  above, and (2), found again chasing this same bug in a different form:
-  a debug camera a few inches from a corner, close to *edge-on* to a
+- That same fix introduced a follow-on bug — or so it seemed. Once the
+  inset back rabbet's depth became `rd`, it started *volumetrically
+  overlapping* the corner rabbets, divider dados, and shelf dados
+  wherever their cut boxes shared territory near the back of the panel —
+  16 overlapping cut pairs in one reported config, and a checkerboard
+  z-fighting glitch in the 3D viewer at exactly that seam. Two more
+  rounds of CSG-side fixes followed: first trimming each cut to stop
+  exactly where a deeper one begins, then — when that exact-touch trim
+  still overlapped by `2*CSG_EPS` once padding was applied, producing a
+  jagged seam — adding a deliberate `JOINT_GAP` margin between them, then
+  — when the user pointed out `JOINT_GAP` had traded the render glitch
+  for a real, physical strip of uncut material at the joint — reworking
+  `buildPieceMesh` in `viewer3d.js` to union a piece's cuts into one
+  solid before a single subtraction, instead of chaining a `SUBTRACTION`
+  per cut. Each of these was a genuine improvement to how the *existing*
+  cuts got turned into a mesh, and each got real testing (sweeps in the
+  thousands of configs, 0 render failures) — but none of them questioned
+  whether the cuts themselves were modeling the joint correctly, and none
+  of them fixed the checkerboard glitch as *completely* as the actual fix
+  below did, using none of this CSG machinery at all.
+- **The real root cause, found when the user pushed back a final time:**
+  "when the back panel is inset, the side panel rabbets should go the
+  full length of the side panels." An end panel's own inset back-rabbet
+  cut stopped at the clear-height boundary, excluding the panel's own
+  tongues — the extra `rd` at each end that fills the top/bottom panel's
+  corner-rabbet pocket (see item 2). But the backboard's *own* corner
+  tongue reaches into that exact same region (its own Y-extent is also
+  grown by `rd` at each end, for the identical tongue-fills-pocket
+  reason — see item 5) — so without this rabbet reaching into the end
+  panel's tongue too, the backboard's corner tongue had nowhere to go:
+  solid, unrelieved end-panel material already occupied that space at
+  all four back corners of every inset case. That's not a rendering
+  glitch, it's a hole in the joint — two pieces of solid material
+  claiming the same physical space — and it's very plausibly what the
+  checkerboard/jagged artifacts had actually been surfacing all along
+  (two opaque meshes occupying overlapping volumes is a textbook
+  z-fighting trigger). Confirmed by forking a test branch from *before*
+  any of the CSG-side fixes above (`JOINT_GAP`, the trims, the union
+  rebuild) and applying *only* this one geometry fix — extending the end
+  panel's back rabbet to the panel's full length: the previously-glitchy
+  corner rendered cleanly, in both color modes, from every camera
+  distance tested, using the *original*, simplest possible CSG code
+  (sequential per-cut `SUBTRACTION`, `CSG_EPS = 0.001`, no trims). A
+  2080-config render-failure sweep found 0 exceptions and a piece-mesh
+  bounding-box check found 0 pieces with stray geometry — matching or
+  exceeding every guarantee the more elaborate CSG rework had provided.
+  **All of the CSG-side machinery above (`JOINT_GAP`, the dado/back-
+  rabbet trims, the union-based `buildPieceMesh`) was reverted in favor
+  of this simpler, more correct fix.** See Joinery Model & Geometry, item
+  2, and 3D Viewer, `CSG_EPS`. **Lesson for next time:** when the same
+  symptom survives several rounds of CSG-robustness fixes, stop tuning
+  the CSG side and re-check whether the *joinery itself* is complete —
+  ask whether every piece that needs to reach a given seam actually has
+  a cut relieving it there, not just whether the cuts that already exist
+  can be combined more robustly.
+- **Debugging notes from this same investigation, still worth knowing:**
+  (1) a debug camera placed extremely close to, or literally inside,
+  solid mesh geometry can produce artifacts (near-clip-plane effects,
+  visible backfaces) that don't occur through normal orbit/pan/zoom use.
+  (2) a debug camera a few inches from a corner, close to *edge-on* to a
   thin (sub-1") exposed rabbet-step face, can produce a flickering,
-  jagged-looking dithering artifact from ordinary antialiasing/grazing-
-  angle rasterization — confirmed by scaling the exact same viewing
-  direction outward (artifact fades well before a realistic distance) and
-  by checking the identical seam from directly in front (clean at any
-  distance, including closer than the grazing shot). Neither artifact
-  reflects the mesh; both are properties of where the debug camera was
-  put. Check a normal-distance, non-grazing view (or the app's own
-  default framing) before concluding a close-up screenshot shows a real
-  defect.
+  jagged-looking dithering artifact from ordinary antialiasing at a
+  grazing viewing angle — confirmed by scaling the same viewing direction
+  outward (the artifact fades well before a realistic distance) and by
+  checking the identical seam head-on instead of edge-on (clean at any
+  distance, including closer than the grazing shot that showed it).
+  Neither artifact reflects the mesh; both are properties of where the
+  debug camera was put. Check a normal-distance, non-grazing view (or the
+  app's own default camera framing) before concluding a close-up
+  screenshot shows a real defect.
 
 Treat every formula and structural decision below as the source of truth
 for how the app actually behaves; if you change the code, update the
@@ -218,38 +224,17 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
    - Rabbet at each end (inside face) to receive the end panels:
      `width = t`, `depth = rd`, running the full `panelDepth`.
    - Dado on the inside face for each internal vertical divider:
-     `width = t`, `depth = dd`, at each divider's x-position (see below).
-     Normally runs the full `panelDepth` in z — **except in inset mode**,
-     where it stops at `panelDepth - bw` instead: past that point is the
-     back rabbet's own territory (below), which cuts *deeper* (`rd` vs.
-     this dado's `dd`) and so already provides equal-or-greater relief
-     for the rest of the divider's run. This trim is exact — zero nominal
-     gap, not padded by any margin — and is provably lossless: every point
-     of material the untrimmed dado would remove past `panelDepth - bw` is
-     a point the back rabbet already removes, so nothing goes un-cut by
-     stopping here. It's not optional bookkeeping, either: the corner-
-     region version of this same redundancy (see the back rabbet below)
-     is a *structurally* degenerate shape for three-bvh-csg's mesh-based
-     CSG — an exact two-axis subset of another cut, not just an overlap —
-     that padding alone can't fix regardless of magnitude (see 3D Viewer,
-     `CSG_EPS`, and the Status entry above for what was tried and why it
-     didn't work). What *does* handle genuine, non-redundant overlap
-     between cuts (e.g. this dado's un-trimmed portion touching the back
-     rabbet at `z = panelDepth - bw`) is `viewer3d.js`'s union-before-
-     subtract build — see `CSG_EPS`.
+     `width = t`, `depth = dd`, at each divider's x-position (see below),
+     running the full `panelDepth` in z regardless of mount mode.
    - **Inset mount only:** rabbet along the back edge for the backboard:
-     `width = bw`, `depth = rd`, running `x = t` to `OW - t` — **not**
-     the full width `OW`. Depth is `rd`, not `tb` — see item 5 for why.
-     Trimmed at each end for the mirror-image reason the divider dado
-     above is trimmed at its far end: `x < t` and `x > OW - t` are the
-     corner rabbets' own territory, already cut the full `panelDepth` at
-     the *same* `rd` depth *and* the same Y-range this cut would use —
-     an exact subset on two full axes, not merely an overlap, which is
-     exactly the shape that breaks three-bvh-csg no matter how it's
-     built (see the dado trim above and 3D Viewer, `CSG_EPS`). This trim
-     is exact and lossless the same way: zero material in the corner
-     goes un-rabbeted, since the corner/end rabbet already removes all
-     of it.
+     `width = bw`, `depth = rd`, running the *full* width `OW` (not
+     trimmed to exclude the corners). Depth is `rd`, not `tb` — see item
+     5 for why. This does volumetrically overlap the corner/end rabbets
+     in the corner zones (`x < t` and `x > OW - t`, where both cuts share
+     the same `rd` depth), but that overlap is harmless to leave in: see
+     3D Viewer, `CSG_EPS`, and the Status entry above for why trimming it
+     out (tried, and reverted) wasn't actually what fixed the real bug in
+     this area, and item 2 for what was.
 
 2. **End panels** (left, right) — qty 2. `length = (OH - 2*t) + 2*rd`,
    `width = panelDepth`, `thickness = t`. The `+ 2*rd` matters: the panel's
@@ -260,12 +245,28 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
    "clear height" origin (`pos.y = t - rd`), so its tongues land exactly
    in the pockets rather than poking past them.
    - Dado on the inner face at each internal row boundary (`R - 1` of
-     them) for shelves: `width = t`, `depth = dd`. Same
-     `panelDepth - bw` trim in inset mode as the top/bottom panel's
-     divider dado above, and for the identical reason (the back rabbet
-     below already covers the rest of the run, deeper).
+     them) for shelves: `width = t`, `depth = dd`, running the full
+     `panelDepth` in z regardless of mount mode.
    - **Inset mount only:** rabbet along the back edge for the backboard:
-     `width = bw`, `depth = rd` (see item 5).
+     `width = bw`, `depth = rd`, running the panel's **full length** —
+     `y = 0` to `y = (OH - 2*t) + 2*rd` (i.e. local `0` to the panel's
+     own `size.y`), including through *both* of the panel's own tongues
+     (the `+ rd` at each end described just above), not just the
+     `endHeight` clear-height span between them. This matters more than
+     it looks: the tongues aren't inert filler, they're captured inside
+     the top/bottom panel's corner-rabbet pocket, and the backboard's
+     *own* corner tongue reaches into that exact same region (see item 5
+     — its Y-extent is also grown by `rd` at each end, for the identical
+     tongue-fills-pocket reason). Without this rabbet reaching into the
+     end panel's own tongue too, the backboard's corner tongue would have
+     nowhere to go: solid, unrelieved end-panel material would already
+     occupy that space, at all four back corners of every inset case.
+     An earlier version stopped this cut at the clear-height boundary
+     (`y = rd` to `y = rd + endHeight`) — it still rendered without an
+     obvious seam artifact for a while, which is what let it stand
+     through several rounds of unrelated CSG-side fixes before a user
+     caught the actual defect and it was traced back here. See the
+     Status entry above for the full story.
 
 3. **Internal vertical dividers** — qty `C - 1`. `length = (OH - 2*t) + 2*dd`
    (same idea as the end panel's `+ 2*rd`, but filling a *dado* pocket
@@ -353,65 +354,28 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
      validation-passing combination through the actual CSG pipeline —
      480 rendered, zero CSG failures, and a separate shoulder/reach check
      confirmed positive on all of them.
-   - **Making the back rabbet share `rd` with the other cuts (above)
-     introduced volumetric overlap between them, a second and distinct
-     way to break the CSG chain.** Reported as a checkerboard z-fighting
-     glitch in the 3D viewer on a real (valid, `bw >= tb`-satisfying)
-     config — not the `tb`-vs-`t` case above, which this same commit had
-     already fixed; this was a follow-on bug in ordinary configurations.
-     A programmatic sweep checking every pair of a piece's own cut boxes
-     for volumetric overlap (not just touching/coplanar boundaries, which
-     `CSG_EPS` already handles) found 16 overlapping pairs in the
-     reported config alone: the back rabbet, now `rd` deep like the
-     corner rabbets and divider/shelf dados, fully or partially contains
-     each of their footprints wherever it shares X/Y territory with them
-     near the back of a panel. Two overlapping subtractions targeting the
-     same material is a second, distinct trigger for three-bvh-csg's
-     exact-coplanarity fragility beyond the adjacent-but-not-overlapping
-     case `CSG_EPS`'s padding fixes — and it rendered as a dithered
-     z-fighting patch rather than a thrown error, which is why it wasn't
-     caught by the fuzz sweep just above (that sweep only checked for
-     thrown exceptions, not overlapping cut geometry). Fixed at the
-     source rather than by padding harder: each divider/shelf dado is
-     trimmed to stop exactly at `panelDepth - bw` in inset mode (see
-     items 1-2) since the back rabbet already covers the rest of the run
-     at equal or greater depth, and the back rabbet's own X-range is
-     trimmed to `t .. OW - t` (see item 1) since the corner rabbets
-     already fully cover those zones. The two cuts now meet edge-to-edge
-     with zero volumetric overlap, verified by re-running the pairwise
-     overlap check (0 remaining, down from 16) and a broader sweep across
-     1280 `rows × columns × t × tb × bw` combinations (896 rendered) —
-     0 overlaps and 0 CSG failures across all of them.
-   - **"Meet edge-to-edge with zero nominal overlap" turned out to still
-     overlap once rendered, because `CSG_EPS` pads every cut before
-     subtraction (see 3D Viewer, `CSG_EPS`).** Padding two cuts that were
-     trimmed to touch exactly expands each of them outward, so they end
-     up overlapping by `2*CSG_EPS` at render time even though their
-     nominal (unpadded) boxes — what a pairwise-overlap checker sees by
-     default — don't overlap at all. Reported by the same user as a
-     jagged, badly-triangulated seam (visually distinct from the
-     checkerboard dithering above) at the divider-dado/back-rabbet
-     corner, still present after the fix above shipped. A first response
-     added a deliberate `JOINT_GAP` margin (0.015") to each trim point so
-     the cuts stopped short of each other instead of meeting exactly —
-     this cleared the render glitch, but only by opening a real, physical
-     strip of un-rabbeted material at the joint, which is a genuine
-     defect (and was exactly what the same user caught next, from a
-     different angle, as a mis-colored sliver — see the Status entry
-     above). **`JOINT_GAP` is gone.** The trims above are back to being
-     exact (zero nominal gap, fully lossless — see their own comments),
-     and the touching/overlapping-after-padding case `JOINT_GAP` was
-     covering is instead handled in `viewer3d.js`: `buildPieceMesh`
-     unions a piece's cuts into one solid (CSG `ADDITION`) before ever
-     subtracting from the base piece, rather than chaining a
-     `SUBTRACTION` per cut. Two cuts that touch or slightly overlap are a
-     well-handled case for a union; it's specifically a *chain* of
-     subtractions repeatedly re-cutting a shared region that three-bvh-csg
-     struggled with, not touching or overlapping on their own — see
-     `CSG_EPS`. Re-verified with a 2080-config render-failure sweep (0
-     failures, `sweep_union.mjs`-style) and a piece-mesh bounding-box
-     check confirming no piece's built mesh extends past its own nominal
-     box (0 findings).
+   - **Making the back rabbet share `rd` with the other cuts (above) also
+     made it volumetrically overlap the corner rabbets and divider/shelf
+     dados wherever their cut boxes share territory near the back of a
+     panel.** Reported as a checkerboard z-fighting glitch in the 3D
+     viewer on a real, otherwise-valid config, and confirmed with 16
+     overlapping cut-box pairs in a programmatic pairwise check. Several
+     rounds of CSG-side fixes followed this report — trimming cuts to
+     stop exactly where a deeper one begins, a deliberate `JOINT_GAP`
+     margin between them, and a rework of `viewer3d.js` to union a
+     piece's cuts into one solid before a single subtraction — each a
+     real improvement in isolation, but **none of them were actually
+     the fix**, and all were eventually reverted. The 16 overlapping
+     pairs were a real, if mostly harmless, side effect of sharing `rd`;
+     the checkerboard glitch itself came from something else entirely —
+     see item 2's end-panel back rabbet and the Status entry above for
+     the actual root cause (an unrelated piece, the end panel, not being
+     rabbeted far enough to give the backboard's own corner tongue
+     anywhere to go) and why fixing that alone, with none of this CSG
+     machinery, cleared it completely. `viewer3d.js`'s `buildPieceMesh`
+     is back to the simplest form: one `SUBTRACTION` per cut, `CSG_EPS`
+     padding only for the narrow coplanarity case it was originally
+     built for — see `CSG_EPS`.
 
 **Divider x-positions** (left inner face = 0, +x toward the right end):
 divider `k` (1-indexed, `k = 1..C-1`) sits with its left face at
@@ -515,58 +479,46 @@ Requirements:
   an axis-aligned rectangular notch, which is the easy case for CSG, so
   this doesn't need general-purpose boolean geometry. `geometry.js` emits
   each cut as a `{ pos, size }` box (or array of boxes) local to the piece
-  alongside its text description; `viewer3d.js`'s `buildPieceMesh` turns
-  them into the actual grooved mesh. Pieces with no cuts (shelves, the
-  backboard) skip CSG and render as plain boxes.
-- **A piece's cuts are unioned into one combined solid (CSG `ADDITION`)
-  before ever touching the base piece, then that single solid is
-  subtracted from the base in one `SUBTRACTION`** — not a `SUBTRACTION`
-  chained per cut, which was the original approach. Several of a piece's
-  cuts touch or overlap by design (e.g. inset mode's back rabbet and a
-  divider dado both reach the same shared boundary, or a corner rabbet
-  and a coplanar dado start flush at a panel's inside face), and
-  three-bvh-csg's mesh-based CSG handles that badly when each cut is
-  subtracted one at a time from the mesh the *previous* subtraction just
-  carved — each pass re-cuts faces the last one already created, which is
-  what actually produced both a thrown exception (`Cannot read properties
-  of null (reading 'dot')`, reproduced with `columns=4`+ in inset mode at
-  specific `rd`/`dd` values) and, separately, a checkerboard/jagged
-  rendering glitch on valid configs a user reported. Building the cuts as
-  one union first sidesteps the chain entirely: union only ever combines
-  cut geometry with other cut geometry, so the final subtraction only has
-  to reason about one clean volume against the untouched base piece.
-- **Every cut is still padded ~0.01" larger than nominal before it's
-  unioned** (`CSG_EPS` in `viewer3d.js`, applied only to the mesh
+  alongside its text description; `viewer3d.js`'s `buildPieceMesh` chains
+  a `SUBTRACTION` per cut against the piece's base box with
+  `three-bvh-csg`. Pieces with no cuts (shelves, the backboard) skip CSG
+  and render as plain boxes.
+- **Every cut is padded ~0.001" larger than nominal before it's
+  subtracted** (`CSG_EPS` in `viewer3d.js`, applied only to the mesh
   geometry — the cut list still reports the exact nominal
-  width/depth/at values from `geometry.js`, untouched). This covers the
-  narrower case the union-first build doesn't: two cuts that are merely
-  touching or exactly coplanar (not overlapping) can still hit
-  three-bvh-csg's exact-coincidence fragility during the union itself.
-  Padding breaks that exact coincidence; verified fixed across a fuzz
-  sweep of ~1700 grid/joinery combinations with zero failures, and
-  re-verified after the union-first rework with a further 2080-config
-  sweep (0 render failures). If a similar crash resurfaces at some future
-  parameter combination, first suspect this same class of issue before
-  assuming a logic bug in `geometry.js`'s cut positions.
-  - **Padding is not a universal fix, though — it cannot resolve a cut
-    whose cross-section is an *exact subset* of another's on two full
-    axes** (identical bounds on two axes, contained on the third), as
-    opposed to merely touching or partially overlapping. This came up
-    concretely: the inset back rabbet's corner region and the corner/end
-    rabbet there share the exact same Y-range (both `rd`-deep cuts from
-    the same face) with the back rabbet's X and Z ranges fully contained
-    in the corner rabbet's — a structurally degenerate shape regardless
-    of how the mesh is built. Confirmed by testing `CSG_EPS` up to `0.05`
-    (5x its shipped value) with zero change to the resulting artifact —
-    ruling out padding magnitude as the lever, however the cuts are
-    combined. `geometry.js` avoids this case at the source instead, by
-    trimming that one specific redundant region out — see Joinery Model
-    & Geometry, items 1-2 and 5 — since it's provably lossless (the
-    corner/end rabbet already removes 100% of it) rather than an
-    approximation. Padding harder is the right first move for genuine
-    touching/coincidence cases (per the guidance above); a subset-shaped
-    overlap that doesn't respond to padding at any magnitude is the
-    signal to trim the redundancy out in `geometry.js` instead.
+  width/depth/at values from `geometry.js`, untouched). This isn't
+  cosmetic: several cuts on the same piece often share a boundary
+  exactly by design (e.g. inset mode's back rabbet and a divider dado
+  both start flush at the panel's inside face), and three-bvh-csg's
+  mesh-based CSG can hit exactly-coplanar faces during a chain of
+  subtractions and throw (`Cannot read properties of null (reading
+  'dot')`) — reproduced concretely with `columns=4`+ in inset mode at
+  specific `rd`/`dd` values (small `rd` in particular), verified fixed
+  by the padding across a fuzz sweep of ~1700 grid/joinery combinations
+  with zero failures. If a similar crash resurfaces at some future
+  combination of parameters, first suspect this same class of issue
+  (another exact-coplanarity case) before assuming a logic bug in
+  `geometry.js`'s cut positions — check whether bumping `CSG_EPS` up
+  resolves it before re-deriving the joinery math.
+  - **This value, and this whole sequential-per-cut-`SUBTRACTION`
+    approach, briefly got a lot more elaborate** (per-cut trims to avoid
+    "redundant" overlapping cuts, a deliberate `JOINT_GAP` between
+    touching cuts, a full rework to union all of a piece's cuts before a
+    single subtraction, `CSG_EPS` bumped to `0.01`) while chasing a
+    checkerboard/jagged rendering glitch that turned out to have nothing
+    to do with any of this: the actual cause was an end panel not being
+    rabbeted far enough to give the backboard's own corner tongue
+    somewhere to go (see Joinery Model & Geometry, item 2, and the
+    Status entry above). Once that was fixed, this original, simplest
+    version of `buildPieceMesh` handled every config in a 2080-config
+    render-failure sweep (0 failures) with no trims, no union, and
+    `CSG_EPS` back at its original `0.001` — so all of that extra
+    machinery was reverted. **Lesson for next time**, worth repeating
+    here since it's specifically about this function: if a rendering
+    glitch survives a round of CSG-robustness tuning, check whether the
+    *joinery itself* is complete (does every piece that should reach a
+    given seam actually have a cut relieving it there?) before adding
+    more CSG workarounds on top of what's already there.
   - **Testing-methodology pitfalls, found while chasing the above (two
     distinct failure modes, both properties of the debug camera, not the
     mesh):** (1) a debug camera positioned extremely close to, or
@@ -653,27 +605,44 @@ Requirements:
   the width axis — rather than being classified as a single "vertical"
   or "horizontal" band with one axis checked. A band can need a position
   dimension on neither axis, either one, or (in principle) both; those
-  are unrelated questions. An earlier version picked one axis per band
-  (whichever it covers *relatively more of*, `rect.h / width >= rect.w
-  / length`, to handle the inset backboard's rabbet on a top/bottom
-  panel spanning nearly-but-not-exactly the full length) and checked
-  edge-flushness only on that one axis. That missed the same rabbet's
-  behavior *on an end panel*: there it spans nearly the full length
-  (stopping `rd` short of both ends to share the corner with the rabbet
-  joint) — a real, previously-undimensioned distance a user asked to
-  see, "how far from the end the rabbet starts" — while *also* being
-  flush against the back edge on the width axis (correctly needing no
-  callout there). One band, two axes, two different answers — a
-  per-band single-axis classification can't represent that; checking
-  both axes independently for every band can, and does.
-- A band flush with an edge on a given axis skips that axis's position
-  dimension line — obvious from the overall dimension already, so a
-  redundant callout would just be clutter — but still gets shaded and
-  labeled. A band not flush on the length axis gets a stacked line in
-  the bottom margin (divider dados on top/bottom panels; the inset back
-  rabbet on end panels, now); not flush on the width axis, the right
-  margin (shelf dados on end panels/dividers). Multiple such lines on
-  one piece stack outward, one lane per band, so they don't overlap.
+  are unrelated questions, and a single per-band axis choice can't
+  represent "flush on one axis, not on the other." A shelf dado on an
+  end panel is a clean example: on the width axis (the panel's depth,
+  Z) it spans the panel's full `panelDepth`, flush at both front and
+  back, needing no callout there — but on the length axis (the panel's
+  own long dimension) it sits at an internal row position, needing a
+  dimension there. A size-based heuristic for picking one axis per band
+  (e.g. whichever it covers *relatively more of*) gets exactly this
+  case wrong, since the dado covers nearly all of the (short) width axis
+  and very little of the (long) length axis — the heuristic would pick
+  width as "the" axis to check and miss the position dimension the
+  length axis actually needs. Checking both axes independently for
+  every band handles this correctly regardless of which axis a band
+  happens to cover more of. (An earlier version of this note used the
+  inset back rabbet on an end panel as its motivating example, back when
+  that rabbet stopped `rd` short of both ends instead of running the
+  panel's full length — see Joinery Model & Geometry, item 2. It's since
+  been fixed to run the full length, so that specific rabbet is now
+  flush on both axes and no longer needs any position callout; the
+  underlying per-axis-independent design this note describes remains
+  correct and is still exercised by shelf/divider dados.)
+- A band flush with an edge on a given axis (touching *either* the near
+  or the far edge — `rect.y <= EPS || rect.y + rect.h >= width - EPS`,
+  and the length-axis equivalent) skips that axis's position dimension
+  line — obvious from the overall dimension already, so a redundant
+  callout would just be clutter — but still gets shaded and labeled. A
+  band not flush on the length axis gets a stacked line in the bottom
+  margin: divider dados on top/bottom panels, and shelf dados on end
+  panels/dividers (their cut always touches the panel's own depth-axis
+  edge at `z = 0`, so they're flush and callout-free on the *width*
+  axis — it's their position along the panel's length that needs
+  dimensioning). Not flush on the width axis would get a stacked line in
+  the right margin instead — not currently exercised by any feature in
+  this design, since every cut here starts flush at a piece's front face
+  (`z = 0`) or reaches its back edge (the inset back rabbet), but the
+  capability exists for a future joinery feature that doesn't. Multiple
+  stacked lines on one piece stack outward, one lane per band, so they
+  don't overlap.
 - Features with no `cut` (text-only joinery notes — a divider's end-grain
   top/bottom edge dados, a shelf's "seats into a dado" note, a backboard's
   assembly note) have no on-piece position to dimension, so they're listed

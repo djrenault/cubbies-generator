@@ -45,51 +45,6 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
   const cutY = (depth) => (insideAtY0 ? 0 : t - depth);
   const features = [];
 
-  // In inset mode, a divider dado's own Z-reach is trimmed to stop exactly
-  // at panelDepth-bw instead of running the full panelDepth: past that
-  // point, the back rabbet (below) already cuts the *same or greater*
-  // cross-section -- it's deeper (rd vs. the dado's own dd) and, at this
-  // dado's X-position, always at least as wide -- so every point back
-  // there that the dado would remove is a point the back rabbet already
-  // removes. This trim is provably lossless, not an approximation: it's
-  // not "these two cuts are close enough that the difference doesn't
-  // matter," it's "this region contributes zero additional material
-  // removal," verified by checking the dado's trimmed-off cross-section
-  // is a full subset of the back rabbet's at every point back there.
-  //
-  // Three approaches were tried here before landing on this one. Running
-  // the dado the full panelDepth (no trim) seems simplest, but a
-  // redundant, *volumetrically overlapping* subtraction like that is
-  // exactly what breaks three-bvh-csg's mesh-based CSG -- reported as a
-  // checkerboard z-fighting glitch, and confirmed independent of how it's
-  // built (chained per-cut SUBTRACTION or a single SUBTRACTION of a
-  // pre-unioned unioned volume both hit it: a box that's fully contained,
-  // sharing whole faces, with another box in the same union is a
-  // structurally degenerate case for this library, not a numerical-
-  // precision one -- padding it harder (tested up to 50x this file's
-  // CSG_EPS) doesn't help, because padding both boxes by the same amount
-  // shifts a shared boundary, it doesn't un-share it). Trimming to
-  // exactly panelDepth-bw (zero nominal gap) was the next attempt --
-  // correct in principle, but back when every cut was subtracted one at a
-  // time, two cuts trimmed to touch *exactly* still ended up overlapping
-  // by 2*CSG_EPS once CSG_EPS's padding (see viewer3d.js) was applied,
-  // and that produced a jagged, badly-triangulated seam. Adding a
-  // deliberate JOINT_GAP margin on top of the exact trim "fixed" that,
-  // but by opening a real, physical gap where the dado and the back
-  // rabbet no longer actually met -- a genuine defect, visible as a
-  // mis-colored sliver of uncut material in a user report, and not what
-  // the joint should look like: nothing should be left un-rabbeted there.
-  // The combination that's actually both lossless and CSG-safe is this
-  // exact trim (no JOINT_GAP) *together with* viewer3d.js's union-first
-  // build: unioning the dado and the back rabbet into one solid before
-  // ever subtracting from the base piece handles the touching boundary
-  // (and CSG_EPS's tiny padding-reintroduced overlap there) robustly,
-  // the same way ADDITION-then-merge routinely handles two boxes that
-  // touch or slightly overlap -- it's specifically the *chained-
-  // SUBTRACTION-of-a-redundant-subset* case above that this library
-  // can't handle, not touching per se.
-  const dadoZ = backboardMount === 'inset' ? panelDepth - bw : panelDepth;
-
   features.push({
     kind: 'rabbet',
     label: 'left end rabbet (receives left end panel)',
@@ -114,7 +69,7 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
       depth: dd,
       at,
       from: 'left edge',
-      cut: { pos: { x: at, y: cutY(dd), z: 0 }, size: { x: t, y: dd, z: dadoZ } },
+      cut: { pos: { x: at, y: cutY(dd), z: 0 }, size: { x: t, y: dd, z: panelDepth } },
     });
   });
 
@@ -127,23 +82,12 @@ function topBottomFeatures({ OW, t, rd, dd, tb, bw, panelDepth, colGaps, insideA
     // even for a valid `tb`, doesn't match how far the backboard's edge
     // actually needs to reach into this pocket (fixed together with that
     // extension below, in computePieces).
-    //
-    // X-range trimmed to [t, OW - t] -- not the full OW -- for the mirror
-    // -image reason `dadoZ` above is trimmed: the corner zones (X: 0..t
-    // and OW-t..OW) are already fully covered by the end rabbets, at the
-    // *same* rd depth and the *same* Y-range this cut would use, over
-    // this cut's *entire* Z-range there -- not just overlapping, but an
-    // exact subset on two full axes, the specific degenerate shape that
-    // breaks three-bvh-csg regardless of padding (see `dadoZ`'s comment).
-    // Trimming here is exactly as lossless as trimming the dado is: zero
-    // material in the corner goes un-removed, since the end rabbet was
-    // already removing all of it.
     features.push({
       kind: 'rabbet',
       label: 'back rabbet (receives backboard)',
       width: bw,
       depth: rd,
-      cut: { pos: { x: t, y: cutY(rd), z: panelDepth - bw }, size: { x: OW - 2 * t, y: rd, z: bw } },
+      cut: { pos: { x: 0, y: cutY(rd), z: panelDepth - bw }, size: { x: OW, y: rd, z: bw } },
     });
   }
 
@@ -163,12 +107,6 @@ function endFeatures({ t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps, inside
   const cutX = (depth) => (insideAtMaxX ? t - depth : 0);
   const features = [];
 
-  // Same reasoning (and the same provably-lossless trim) as `dadoZ` in
-  // topBottomFeatures: in inset mode, a shelf dado's Z-reach stops exactly
-  // at panelDepth-bw, since the end panel's own back rabbet below already
-  // covers its full cross-section for any Z past that point.
-  const dadoZ = backboardMount === 'inset' ? panelDepth - bw : panelDepth;
-
   rowGaps.forEach((g, i) => {
     features.push({
       kind: 'dado',
@@ -177,21 +115,36 @@ function endFeatures({ t, rd, dd, tb, bw, panelDepth, endHeight, rowGaps, inside
       depth: dd,
       at: g.start,
       from: 'bottom edge',
-      cut: { pos: { x: cutX(dd), y: g.start + rd, z: 0 }, size: { x: dd, y: t, z: dadoZ } },
+      cut: { pos: { x: cutX(dd), y: g.start + rd, z: 0 }, size: { x: dd, y: t, z: panelDepth } },
     });
   });
 
   if (backboardMount === 'inset') {
     // See the matching comment in topBottomFeatures: depth is `rd`, not
-    // `tb`. (The `y: rd` position offset here is the panel's own
-    // clear-height-origin shift, unrelated to the depth-into-thickness
-    // value -- both simply happen to use the same `rd` parameter.)
+    // `tb`.
+    //
+    // Runs the panel's *full* length (y: 0 to endHeight + 2*rd, i.e. local
+    // 0 to the panel's own size.y), not just the endHeight clear-height
+    // span -- including through both of the panel's own tongues (the
+    // extra rd at each end that fills the top/bottom panel's corner-
+    // rabbet pocket, see the file-header comment on this function). Those
+    // tongues aren't just inert filler: the backboard's own perimeter
+    // tongue (see Backboard, in computePieces) reaches into that exact
+    // same corner -- its Y-extent is also grown by rd at each end, for
+    // the identical tongue-fills-pocket reason -- so without this rabbet
+    // reaching into the end panel's own tongue too, the backboard's
+    // corner tongue would have nowhere to go: solid, unrelieved end-panel
+    // material would already occupy that space. Stopping this cut at the
+    // clear-height boundary (the previous behavior) left exactly that
+    // gap unaddressed -- it happened to still *render* without a visible
+    // seam artifact, but the joint itself was structurally incomplete at
+    // all four back corners of an inset case, not just cosmetically off.
     features.push({
       kind: 'rabbet',
       label: 'back rabbet (receives backboard)',
       width: bw,
       depth: rd,
-      cut: { pos: { x: cutX(rd), y: rd, z: panelDepth - bw }, size: { x: rd, y: endHeight, z: bw } },
+      cut: { pos: { x: cutX(rd), y: 0, z: panelDepth - bw }, size: { x: rd, y: endHeight + 2 * rd, z: bw } },
     });
   }
 
