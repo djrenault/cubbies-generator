@@ -61,28 +61,50 @@ before touching that code again:
   thin but real reintroduction of the same class of problem, reported by
   the same user as a jagged, badly-triangulated seam (not a checkerboard
   this time) at the divider-dado/back-rabbet corner, still present after
-  the previous fix shipped. Confirmed via an overlap checker that mirrors
-  `buildPieceMesh`'s own padding math before checking pairwise cut-box
-  overlap, not just the nominal (unpadded) geometry the first fix's
-  checker used — the nominal check reported 0 overlaps and missed this
-  entirely. Fixed two ways together: a `JOINT_GAP` margin (0.015", well
-  above `2*CSG_EPS`) added to each exact-touch trim so the cuts stop a
-  hair short of each other instead of meeting exactly — see Joinery
-  Model & Geometry, items 1-2 — and `CSG_EPS` itself raised from `0.001`
-  to `0.01`, which is what actually resolved the specific jagged
-  triangulation visible in the report (the `JOINT_GAP` margin alone,
-  tested in isolation, did not — see 3D Viewer, `CSG_EPS`). Re-verified
-  with the same padded-overlap checker (0 overlaps, down from a nonzero
-  padded-overlap count) and a re-run of the ~1700-combination CSG fuzz
-  sweep (0 render failures). **Debugging note for next time:** a debug
-  camera placed extremely close to, or literally inside, solid mesh
-  geometry can produce artifacts (near-clip-plane effects, visible
-  backfaces) that don't occur through normal orbit/pan/zoom use from
-  outside the model — one such artifact found while chasing this bug was
-  confirmed, after the fact, to be exactly that: invisible from every
-  realistic camera distance and angle, including a legitimate
-  from-behind-the-case shot. Rule that out before treating a close-up
-  screenshot artifact as a real geometry defect.
+  the previous fix shipped. A first response to this added a deliberate
+  `JOINT_GAP` margin (0.015") on top of the exact trim, so the two cuts
+  stopped short of each other instead of meeting exactly — this cleared
+  the render glitch, but the user caught what it actually cost: a real,
+  physical strip of uncut material at the joint, visible as a
+  mis-colored sliver, and not what a rabbet should look like at all —
+  their own read (the rabbet needs to run its full reach, "no offset")
+  was the right diagnosis even though the specific cut and mechanism
+  differed from their guess. **`JOINT_GAP` was reverted entirely** — see
+  Joinery Model & Geometry, items 1-2 and 5, and 3D Viewer, `CSG_EPS`, for
+  what replaced it: `viewer3d.js`'s `buildPieceMesh` now unions a piece's
+  overlapping/touching cuts into one solid (via CSG `ADDITION`) before
+  ever subtracting from the base piece, instead of chaining a
+  `SUBTRACTION` per cut — the chain, not the touching/overlap itself, was
+  what made three-bvh-csg produce bad output, since each subtraction was
+  re-cutting faces the previous one had already carved. That alone wasn't
+  quite sufficient either: the inset back rabbet's corner region isn't
+  merely overlapping the corner/end rabbet there, it's an exact subset of
+  it on two full axes (identical Y-range, contained X and Z) — a
+  structurally degenerate shape for this CSG library regardless of how
+  it's built, confirmed by testing padding up to 5x `CSG_EPS` with zero
+  change to the resulting artifact. `geometry.js` trims *that specific*
+  redundancy back out (provably lossless — the corner/end rabbet was
+  already removing 100% of it, so nothing goes un-rabbeted, unlike
+  `JOINT_GAP`'s margin), while every other touching/overlapping cut is
+  left to the union to resolve. Verified with a 2080-config render-failure
+  sweep (0 failures) and a piece-mesh bounding-box check across the
+  reported config (0 pieces with stray geometry outside their own nominal
+  box). **Debugging notes for next time:** (1) a debug camera placed
+  extremely close to, or literally inside, solid mesh geometry can
+  produce artifacts (near-clip-plane effects, visible backfaces) that
+  don't occur through normal orbit/pan/zoom use — already documented
+  above, and (2), found again chasing this same bug in a different form:
+  a debug camera a few inches from a corner, close to *edge-on* to a
+  thin (sub-1") exposed rabbet-step face, can produce a flickering,
+  jagged-looking dithering artifact from ordinary antialiasing/grazing-
+  angle rasterization — confirmed by scaling the exact same viewing
+  direction outward (artifact fades well before a realistic distance) and
+  by checking the identical seam from directly in front (clean at any
+  distance, including closer than the grazing shot). Neither artifact
+  reflects the mesh; both are properties of where the debug camera was
+  put. Check a normal-distance, non-grazing view (or the app's own
+  default framing) before concluding a close-up screenshot shows a real
+  defect.
 
 Treat every formula and structural decision below as the source of truth
 for how the app actually behaves; if you change the code, update the
@@ -201,20 +223,33 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
      where it stops at `panelDepth - bw` instead: past that point is the
      back rabbet's own territory (below), which cuts *deeper* (`rd` vs.
      this dado's `dd`) and so already provides equal-or-greater relief
-     for the rest of the divider's run. Continuing the dado's own cut
-     into that zone would just be re-removing material the back rabbet
-     already removes — harmless geometrically, but exactly the kind of
-     redundant/overlapping subtraction that made three-bvh-csg's
-     mesh-based CSG glitch (see 3D Viewer, `CSG_EPS`, and the Status
-     entry above).
+     for the rest of the divider's run. This trim is exact — zero nominal
+     gap, not padded by any margin — and is provably lossless: every point
+     of material the untrimmed dado would remove past `panelDepth - bw` is
+     a point the back rabbet already removes, so nothing goes un-cut by
+     stopping here. It's not optional bookkeeping, either: the corner-
+     region version of this same redundancy (see the back rabbet below)
+     is a *structurally* degenerate shape for three-bvh-csg's mesh-based
+     CSG — an exact two-axis subset of another cut, not just an overlap —
+     that padding alone can't fix regardless of magnitude (see 3D Viewer,
+     `CSG_EPS`, and the Status entry above for what was tried and why it
+     didn't work). What *does* handle genuine, non-redundant overlap
+     between cuts (e.g. this dado's un-trimmed portion touching the back
+     rabbet at `z = panelDepth - bw`) is `viewer3d.js`'s union-before-
+     subtract build — see `CSG_EPS`.
    - **Inset mount only:** rabbet along the back edge for the backboard:
      `width = bw`, `depth = rd`, running `x = t` to `OW - t` — **not**
      the full width `OW`. Depth is `rd`, not `tb` — see item 5 for why.
      Trimmed at each end for the mirror-image reason the divider dado
      above is trimmed at its far end: `x < t` and `x > OW - t` are the
      corner rabbets' own territory, already cut the full `panelDepth` at
-     the *same* `rd` depth, so reaching the back rabbet in there too
-     would be pure overlap with no gap to fill.
+     the *same* `rd` depth *and* the same Y-range this cut would use —
+     an exact subset on two full axes, not merely an overlap, which is
+     exactly the shape that breaks three-bvh-csg no matter how it's
+     built (see the dado trim above and 3D Viewer, `CSG_EPS`). This trim
+     is exact and lossless the same way: zero material in the corner
+     goes un-rabbeted, since the corner/end rabbet already removes all
+     of it.
 
 2. **End panels** (left, right) — qty 2. `length = (OH - 2*t) + 2*rd`,
    `width = panelDepth`, `thickness = t`. The `+ 2*rd` matters: the panel's
@@ -356,22 +391,27 @@ Backboard, below): `panelDepth = mount === 'inset' ? id + tb : id`.
      default — don't overlap at all. Reported by the same user as a
      jagged, badly-triangulated seam (visually distinct from the
      checkerboard dithering above) at the divider-dado/back-rabbet
-     corner, still present after the fix above shipped; confirmed by
-     re-running the overlap checker against *padded* geometry (mirroring
-     `buildPieceMesh`'s own padding math) instead of nominal, which found
-     the reintroduced overlap the nominal check missed. Fixed by giving
-     the trim a real margin instead of an exact touch: `JOINT_GAP`
-     (0.015", comfortably larger than `2*CSG_EPS` could ever close) is
-     subtracted at each of the trim points above — the divider/shelf
-     dado's `dadoZ` stops `JOINT_GAP` short of `panelDepth - bw`, and the
-     back rabbet's X-range is inset by `JOINT_GAP` on each side — leaving
-     a deliberate, sub-1/32" uncut sliver between the two cuts rather
-     than a coincident boundary. `JOINT_GAP` alone, tested in isolation,
-     did *not* clear the reported jagged seam; clearing it also required
-     raising `CSG_EPS` itself from `0.001` to `0.01` (see 3D Viewer,
-     `CSG_EPS`) — both changes ship together. Re-verified with the
-     padded-overlap checker (0 overlaps) and a re-run of the existing
-     ~1700-combination CSG fuzz sweep (0 render failures).
+     corner, still present after the fix above shipped. A first response
+     added a deliberate `JOINT_GAP` margin (0.015") to each trim point so
+     the cuts stopped short of each other instead of meeting exactly —
+     this cleared the render glitch, but only by opening a real, physical
+     strip of un-rabbeted material at the joint, which is a genuine
+     defect (and was exactly what the same user caught next, from a
+     different angle, as a mis-colored sliver — see the Status entry
+     above). **`JOINT_GAP` is gone.** The trims above are back to being
+     exact (zero nominal gap, fully lossless — see their own comments),
+     and the touching/overlapping-after-padding case `JOINT_GAP` was
+     covering is instead handled in `viewer3d.js`: `buildPieceMesh`
+     unions a piece's cuts into one solid (CSG `ADDITION`) before ever
+     subtracting from the base piece, rather than chaining a
+     `SUBTRACTION` per cut. Two cuts that touch or slightly overlap are a
+     well-handled case for a union; it's specifically a *chain* of
+     subtractions repeatedly re-cutting a shared region that three-bvh-csg
+     struggled with, not touching or overlapping on their own — see
+     `CSG_EPS`. Re-verified with a 2080-config render-failure sweep (0
+     failures, `sweep_union.mjs`-style) and a piece-mesh bounding-box
+     check confirming no piece's built mesh extends past its own nominal
+     box (0 findings).
 
 **Divider x-positions** (left inner face = 0, +x toward the right end):
 divider `k` (1-indexed, `k = 1..C-1`) sits with its left face at
@@ -475,56 +515,74 @@ Requirements:
   an axis-aligned rectangular notch, which is the easy case for CSG, so
   this doesn't need general-purpose boolean geometry. `geometry.js` emits
   each cut as a `{ pos, size }` box (or array of boxes) local to the piece
-  alongside its text description; `viewer3d.js` subtracts them from the
-  piece's box with `three-bvh-csg`. Pieces with no cuts (shelves, the
+  alongside its text description; `viewer3d.js`'s `buildPieceMesh` turns
+  them into the actual grooved mesh. Pieces with no cuts (shelves, the
   backboard) skip CSG and render as plain boxes.
-- **Every cut is padded ~0.01" larger than nominal before it's subtracted**
-  (`CSG_EPS` in `viewer3d.js`, applied only to the mesh geometry — the cut
-  list still reports the exact nominal width/depth/at values from
-  `geometry.js`, untouched). This isn't cosmetic: several cuts on the same
-  piece often share a boundary exactly by design (e.g. inset mode's back
-  rabbet and a divider dado both start flush at the panel's inside face),
-  and three-bvh-csg's mesh-based CSG can hit exactly-coplanar faces during
-  a chain of subtractions and throw (`Cannot read properties of null
-  (reading 'dot')`) — reproduced concretely with `columns=4`+ in inset
-  mode at specific `rd`/`dd` values (small `rd` in particular), verified
-  fixed by the padding across a fuzz sweep of ~1700 grid/joinery
-  combinations with zero failures. If a similar crash resurfaces at some
-  future combination of parameters, first suspect this same class of
-  issue (another exact-coplanarity case) before assuming a logic bug in
-  `geometry.js`'s cut positions — check whether bumping `CSG_EPS` up
-  resolves it before re-deriving the joinery math.
-  - **`CSG_EPS` started at `0.001` and was raised to `0.01` after a second,
-    related failure mode surfaced: padding can *reintroduce* overlap at a
-    boundary two cuts were deliberately trimmed to meet exactly (see
-    Joinery Model & Geometry, item 5's `JOINT_GAP` entry, and the Status
-    entry above) — a distinct case from the original coplanarity-only
-    problem this padding was designed for, since here the cuts don't just
-    touch, they end up genuinely overlapping by `2*CSG_EPS` once padded.
-    That reintroduced overlap rendered as a jagged, badly-triangulated
-    seam rather than a thrown exception, on a real user config, and
-    persisted even after `geometry.js`'s cuts were given a real
-    (`JOINT_GAP`) gap at that boundary — it was specifically raising
-    `CSG_EPS` itself (tested at `0.005`, insufficient — produced a
-    different, wrong-shaped small notch artifact instead of jaggedness;
-    `0.01`, clean; `0.02`, also clean but no better than `0.01`) that
-    resolved the visible artifact. Both fixes ship together (`JOINT_GAP`
-    in `geometry.js` plus this bump), verified with a padded-geometry
-    overlap checker (0 overlaps, mirroring `buildPieceMesh`'s exact
-    padding math rather than checking nominal/unpadded cut boxes, which
-    had missed this) and a re-run of the fuzz sweep above (0 failures).
-  - **Testing-methodology pitfall found while chasing the above**: a
-    debug camera positioned extremely close to, or literally inside,
-    solid mesh geometry (useful for inspecting a specific seam up close)
-    can itself produce rendering artifacts — near-clip-plane effects,
-    visible backfaces — that never occur through normal orbit/pan/zoom
-    use from outside the model. One such artifact (a "spike" at a
-    corner) was chased at length before being confirmed, by re-rendering
-    the same corner from realistic viewing distances and from a
-    legitimate from-behind-the-case angle, to be exactly that: an
-    artifact of the extreme camera placement, not the mesh. Rule this
-    out — re-check from a normal viewing distance — before treating a
-    close-up debug screenshot as proof of a real geometry defect.
+- **A piece's cuts are unioned into one combined solid (CSG `ADDITION`)
+  before ever touching the base piece, then that single solid is
+  subtracted from the base in one `SUBTRACTION`** — not a `SUBTRACTION`
+  chained per cut, which was the original approach. Several of a piece's
+  cuts touch or overlap by design (e.g. inset mode's back rabbet and a
+  divider dado both reach the same shared boundary, or a corner rabbet
+  and a coplanar dado start flush at a panel's inside face), and
+  three-bvh-csg's mesh-based CSG handles that badly when each cut is
+  subtracted one at a time from the mesh the *previous* subtraction just
+  carved — each pass re-cuts faces the last one already created, which is
+  what actually produced both a thrown exception (`Cannot read properties
+  of null (reading 'dot')`, reproduced with `columns=4`+ in inset mode at
+  specific `rd`/`dd` values) and, separately, a checkerboard/jagged
+  rendering glitch on valid configs a user reported. Building the cuts as
+  one union first sidesteps the chain entirely: union only ever combines
+  cut geometry with other cut geometry, so the final subtraction only has
+  to reason about one clean volume against the untouched base piece.
+- **Every cut is still padded ~0.01" larger than nominal before it's
+  unioned** (`CSG_EPS` in `viewer3d.js`, applied only to the mesh
+  geometry — the cut list still reports the exact nominal
+  width/depth/at values from `geometry.js`, untouched). This covers the
+  narrower case the union-first build doesn't: two cuts that are merely
+  touching or exactly coplanar (not overlapping) can still hit
+  three-bvh-csg's exact-coincidence fragility during the union itself.
+  Padding breaks that exact coincidence; verified fixed across a fuzz
+  sweep of ~1700 grid/joinery combinations with zero failures, and
+  re-verified after the union-first rework with a further 2080-config
+  sweep (0 render failures). If a similar crash resurfaces at some future
+  parameter combination, first suspect this same class of issue before
+  assuming a logic bug in `geometry.js`'s cut positions.
+  - **Padding is not a universal fix, though — it cannot resolve a cut
+    whose cross-section is an *exact subset* of another's on two full
+    axes** (identical bounds on two axes, contained on the third), as
+    opposed to merely touching or partially overlapping. This came up
+    concretely: the inset back rabbet's corner region and the corner/end
+    rabbet there share the exact same Y-range (both `rd`-deep cuts from
+    the same face) with the back rabbet's X and Z ranges fully contained
+    in the corner rabbet's — a structurally degenerate shape regardless
+    of how the mesh is built. Confirmed by testing `CSG_EPS` up to `0.05`
+    (5x its shipped value) with zero change to the resulting artifact —
+    ruling out padding magnitude as the lever, however the cuts are
+    combined. `geometry.js` avoids this case at the source instead, by
+    trimming that one specific redundant region out — see Joinery Model
+    & Geometry, items 1-2 and 5 — since it's provably lossless (the
+    corner/end rabbet already removes 100% of it) rather than an
+    approximation. Padding harder is the right first move for genuine
+    touching/coincidence cases (per the guidance above); a subset-shaped
+    overlap that doesn't respond to padding at any magnitude is the
+    signal to trim the redundancy out in `geometry.js` instead.
+  - **Testing-methodology pitfalls, found while chasing the above (two
+    distinct failure modes, both properties of the debug camera, not the
+    mesh):** (1) a debug camera positioned extremely close to, or
+    literally inside, solid mesh geometry can produce artifacts —
+    near-clip-plane effects, visible backfaces — that never occur through
+    normal orbit/pan/zoom use from outside the model. (2) a debug camera
+    a few inches from a corner, close to *edge-on* to a thin (sub-1")
+    exposed rabbet-step face, can produce a flickering, jagged-looking
+    dithering artifact from ordinary antialiasing at a grazing viewing
+    angle — confirmed by scaling the same viewing direction outward
+    (the artifact fades well before a realistic distance) and by checking
+    the identical seam head-on instead of edge-on (clean at any distance,
+    including closer than the grazing shot that showed it). Rule both
+    out — check a normal-distance, non-grazing view, or the app's own
+    default camera framing — before treating a close-up debug screenshot
+    as proof of a real geometry defect.
 - Nice-to-have, not required for v1: click a piece to highlight it and
   scroll/highlight the matching cut-list row; an exploded-view slider.
 
